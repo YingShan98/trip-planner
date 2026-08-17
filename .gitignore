@@ -1,0 +1,4 @@
+# Local Supabase/frontend config
+.DS_Store
+.vscode/
+.idea/
