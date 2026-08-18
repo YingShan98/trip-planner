@@ -24,8 +24,8 @@
 
 ## 技术
 
-- Vanilla HTML / CSS / JavaScript
-- Supabase JS v2 CDN
+- React 18 + TypeScript + Vite
+- Supabase JS v2
 - Supabase Postgres + RPC + Realtime
 - GitHub Pages / Netlify / Vercel 均可部署
 
@@ -55,41 +55,45 @@
 复制：
 
 ```text
-config.example.js → config.js
+.env.example → .env
 ```
 
 填写 Supabase Dashboard → Project Settings → API 中的：
 
-- Project URL
-- Publishable key / anon public key
+- Project URL → `VITE_SUPABASE_URL`
+- Publishable key / anon public key → `VITE_SUPABASE_KEY`
 
-`config.js` 已加入 `.gitignore`，所以不会被 Git 提交。
+`.env` 已加入 `.gitignore`，所以不会被 Git 提交。这些值在构建时会被 Vite 打包进前端代码。
 
 **anon/publishable key 可以出现在前端；Database Password、service_role key 绝对不要放进前端。**
 
 ## 4. 本地测试
 
-不要直接双击 `index.html`。建议用 VS Code Live Server，或者：
-
 ```bash
-python -m http.server 8080
+npm install
+npm run dev
 ```
 
-然后访问：
+然后访问终端输出的地址（默认 `http://localhost:5173/trip-planner/`）。
 
-```text
-http://localhost:8080
+其他常用命令：
+
+```bash
+npm run build      # 生产构建到 dist/
+npm run preview    # 本地预览生产构建
+npm run typecheck  # TypeScript 类型检查
 ```
 
 ## 5. GitHub Pages
 
 1. 新建 GitHub repository，例如 `trip-planner`
-2. 上传本仓库所有文件
-3. 把 `config.js` 一起上传（它包含 publishable/anon key，不是 service role key）
-4. GitHub → Settings → Pages
-5. Source 选择 `Deploy from a branch`
-6. Branch 选择 `main` / `/root`
-7. 等待部署
+2. 上传本仓库所有文件（**不要**上传 `.env`、`node_modules/`、`dist/`）
+3. Repository → Settings → Secrets and variables → Actions → **Variables** 标签页，添加：
+   - `VITE_SUPABASE_URL`
+   - `VITE_SUPABASE_KEY`
+   （这些是 publishable/anon key，不是密钥，用 Variables 而不是 Secrets 即可）
+4. GitHub → Settings → Pages → Source 选择 `GitHub Actions`
+5. 推送到 `main` 分支，`.github/workflows/pages.yml` 会自动执行 `npm ci && npm run build` 并部署 `dist/`
 
 然后你会得到类似：
 

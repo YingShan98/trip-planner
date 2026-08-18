@@ -9,42 +9,9 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+SC:wght@400;500;600;700&family=Noto+Serif+SC:wght@600;700&display=swap" rel="stylesheet">
-<link rel="stylesheet" href="styles.css">
-<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
-<script src="config.js"></script>
 </head>
 <body>
-<div id="app">
-  <header class="topbar">
-    <div class="brand"><span>✈️</span><strong>Trip Planner</strong><small>多人协作旅行规划器</small></div>
-    <div class="top-actions">
-      <button id="homeBtn" class="ghost">我的旅行</button>
-      <button id="newTripBtn" class="primary">＋ 新建旅行</button>
-    </div>
-  </header>
-
-  <main id="homeView" class="view">
-    <section class="hero home-hero">
-      <div>
-        <div class="eyebrow">YOUR TRAVEL WORKSPACE</div>
-        <h1>把旅行计划放在一起，<br>和同行的人一起完成。</h1>
-        <p>公开查看、密码编辑、实时同步。一个项目可以管理所有未来旅行。</p>
-      </div>
-      <button class="primary large" id="heroNewTrip">＋ 创建第一趟旅行</button>
-    </section>
-    <section class="section">
-      <div class="section-head"><h2>我的旅行</h2><span id="tripCount" class="muted"></span></div>
-      <div id="tripList" class="trip-grid"></div>
-    </section>
-  </main>
-
-  <main id="tripView" class="view hidden">
-    <div id="tripApp"></div>
-  </main>
-</div>
-
-<div id="modal" class="modal hidden"><div class="modal-card"><button class="modal-x" id="modalClose">×</button><div id="modalBody"></div></div></div>
-<div id="toast" class="toast"></div>
-<script src="app.js"></script>
+<div id="root"></div>
+<script type="module" src="/src/main.tsx"></script>
 </body>
 </html>
