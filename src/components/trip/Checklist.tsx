@@ -3,55 +3,49 @@ import { uid } from '../../state';
 import type { Mutate, TripState } from '../../types';
 
 export default function Checklist({
-  state,
-  editUnlocked,
-  mutate,
+  state, editUnlocked, mutate,
 }: {
-  state: TripState;
-  editUnlocked: boolean;
-  mutate: Mutate;
+  state: TripState; editUnlocked: boolean; mutate: Mutate;
 }) {
   const [newText, setNewText] = useState('');
 
   const add = () => {
     const v = newText.trim();
     if (!v) return;
-    mutate((d) => {
-      d.checklist.push({ id: uid('c'), text: v, done: false });
-    });
+    mutate((d) => { d.checklist.push({ id: uid('c'), text: v, done: false }); });
     setNewText('');
   };
 
   return (
-    <section className="section">
-      <div className="section-head">
-        <h2>☑️ Checklist</h2>
-        <span className="muted">出发前要完成的事项</span>
+    <section className="py-7 border-b border-line">
+      <div className="flex justify-between items-center gap-2.5 pb-3.5 mb-4 border-b-2 border-line flex-wrap">
+        <h2 className="font-serif text-[19px] font-bold text-jade-dark">☑️ Checklist</h2>
+        <span className="text-muted text-[13px]">出发前要完成的事项</span>
       </div>
-      <div className="checklist">
+
+      <div className="flex flex-col gap-2">
         {state.checklist.length === 0 ? (
-          <div className="empty">暂无事项</div>
+          <div className="empty-state">暂无事项</div>
         ) : (
           state.checklist.map((x, i) => (
-            <div className={`check-row${x.done ? ' done' : ''}`} key={i}>
+            <div
+              key={i}
+              className={`flex items-center gap-3 border-[1.5px] rounded px-3.5 py-[11px] transition-all duration-150 ${
+                x.done
+                  ? 'bg-surface-3 border-transparent'
+                  : 'bg-surface border-line hover:border-line-strong'
+              }`}
+            >
               <input
-                className="editable"
                 type="checkbox"
+                className="custom-check editable"
                 checked={x.done}
-                onChange={(e) =>
-                  mutate((d) => {
-                    d.checklist[i].done = e.target.checked;
-                  })
-                }
+                onChange={(e) => mutate((d) => { d.checklist[i].done = e.target.checked; })}
               />
-              <span className="grow">{x.text}</span>
+              <span className={`flex-1 text-[14px] ${x.done ? 'line-through text-muted' : ''}`}>{x.text}</span>
               <button
-                className="mini edit-only"
-                onClick={() =>
-                  mutate((d) => {
-                    d.checklist.splice(i, 1);
-                  })
-                }
+                className="btn-mini edit-only"
+                onClick={() => mutate((d) => { d.checklist.splice(i, 1); })}
               >
                 ×
               </button>
@@ -59,12 +53,17 @@ export default function Checklist({
           ))
         )}
       </div>
+
       {editUnlocked && (
-        <div className="inline-add edit-only">
-          <input placeholder="添加 Checklist 项目" value={newText} onChange={(e) => setNewText(e.target.value)} />
-          <button className="primary" onClick={add}>
-            添加
-          </button>
+        <div className="flex gap-2 mt-3 edit-only">
+          <input
+            className="inp flex-1"
+            placeholder="添加 Checklist 项目"
+            value={newText}
+            onChange={(e) => setNewText(e.target.value)}
+            onKeyDown={(e) => e.key === 'Enter' && add()}
+          />
+          <button className="btn-primary" onClick={add}>添加</button>
         </div>
       )}
     </section>

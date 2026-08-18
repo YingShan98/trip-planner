@@ -20,7 +20,6 @@
 - JSON 导入/导出：方便备份与迁移
 - 打印 / PDF
 - 手机与桌面响应式布局
-- 不需要构建工具，直接部署到 GitHub Pages 即可
 
 ## 技术
 
@@ -88,10 +87,10 @@ npm run typecheck  # TypeScript 类型检查
 
 1. 新建 GitHub repository，例如 `trip-planner`
 2. 上传本仓库所有文件（**不要**上传 `.env`、`node_modules/`、`dist/`）
-3. Repository → Settings → Secrets and variables → Actions → **Variables** 标签页，添加：
+3. Repository → Settings → Secrets and variables → Actions → **Secrets** 标签页，添加：
    - `VITE_SUPABASE_URL`
    - `VITE_SUPABASE_KEY`
-   （这些是 publishable/anon key，不是密钥，用 Variables 而不是 Secrets 即可）
+   （这些是 publishable/anon key，CI workflow 从 `secrets.*` 读取）
 4. GitHub → Settings → Pages → Source 选择 `GitHub Actions`
 5. 推送到 `main` 分支，`.github/workflows/pages.yml` 会自动执行 `npm ci && npm run build` 并部署 `dist/`
 

@@ -3,129 +3,82 @@ import { convertAmount, formatMoney, parseRate } from '../../lib/currency';
 import type { Mutate, TripState } from '../../types';
 
 export default function TransportSection({
-  state,
-  editUnlocked,
-  mutate,
-  homeCurrency,
+  state, editUnlocked, mutate, homeCurrency,
 }: {
-  state: TripState;
-  editUnlocked: boolean;
-  mutate: Mutate;
-  homeCurrency: string;
+  state: TripState; editUnlocked: boolean; mutate: Mutate; homeCurrency: string;
 }) {
-  const home = homeCurrency || 'MYR';
+  const home    = homeCurrency || 'MYR';
   const foreign = state.foreignCurrency || '外币';
-  const rate = parseRate(state.exchangeRate);
+  const rate    = parseRate(state.exchangeRate);
 
   return (
-    <section className="section">
-      <div className="section-head">
-        <h2>🚐 交通参考</h2>
-        <span className="muted">可用于包车、火车、地铁、租车等</span>
+    <section className="py-7 border-b border-line">
+      <div className="flex justify-between items-center gap-2.5 pb-3.5 mb-4 border-b-2 border-line flex-wrap">
+        <h2 className="font-serif text-[19px] font-bold text-jade-dark">🚐 交通参考</h2>
+        <span className="text-muted text-[13px]">可用于包车、火车、地铁、租车等</span>
       </div>
-      <div className="transport-grid">
-        {state.transport.length === 0 ? (
-          <div className="empty">暂无交通参考</div>
-        ) : (
-          state.transport.map((x, i) => (
-            <article className="transport-card" key={i}>
-              <div style={{ display: 'flex', gap: 7 }}>
+
+      {state.transport.length === 0 ? (
+        <div className="empty-state">暂无交通参考</div>
+      ) : (
+        <div className="grid grid-cols-[repeat(auto-fill,minmax(270px,1fr))] gap-3.5">
+          {state.transport.map((x, i) => (
+            <article key={i} className="bg-surface border border-line rounded-lg p-4 shadow-xs flex flex-col gap-2">
+              <div className="flex gap-1.5">
                 <input
-                  className="editable"
+                  className="inp editable flex-1 font-bold"
                   value={x.type}
                   placeholder="交通方式 / 车型"
-                  style={{ flex: 1, fontWeight: 700 }}
-                  onChange={(e) =>
-                    mutate((d) => {
-                      d.transport[i].type = e.target.value;
-                    })
-                  }
+                  onChange={(e) => mutate((d) => { d.transport[i].type = e.target.value; })}
                 />
-                {editUnlocked && (
-                  <button
-                    className="mini edit-only"
-                    onClick={() =>
-                      mutate((d) => {
-                        d.transport.splice(i, 1);
-                      })
-                    }
-                  >
-                    ×
-                  </button>
-                )}
+                <button className="btn-mini edit-only shrink-0" onClick={() => mutate((d) => { d.transport.splice(i, 1); })}>×</button>
               </div>
               <textarea
-                className="editable"
+                className="inp editable min-h-[56px] resize-y"
                 value={x.description}
                 placeholder="说明"
-                onChange={(e) =>
-                  mutate((d) => {
-                    d.transport[i].description = e.target.value;
-                  })
-                }
+                onChange={(e) => mutate((d) => { d.transport[i].description = e.target.value; })}
               />
               <input
-                className="editable"
+                className="inp editable"
                 value={x.price}
                 placeholder="价格说明，如 /天、/人"
-                onChange={(e) =>
-                  mutate((d) => {
-                    d.transport[i].price = e.target.value;
-                  })
-                }
+                onChange={(e) => mutate((d) => { d.transport[i].price = e.target.value; })}
               />
-              <div style={{ display: 'flex', gap: 7 }}>
+              <div className="flex gap-1.5">
                 <input
-                  className="editable"
+                  className="inp editable flex-1"
                   type="number"
                   value={x.amount}
                   placeholder="金额"
-                  style={{ flex: 1 }}
-                  onChange={(e) =>
-                    mutate((d) => {
-                      d.transport[i].amount = e.target.value;
-                    })
-                  }
+                  onChange={(e) => mutate((d) => { d.transport[i].amount = e.target.value; })}
                 />
                 <select
-                  className="editable"
+                  className="inp editable w-auto"
                   value={x.currency}
-                  onChange={(e) =>
-                    mutate((d) => {
-                      d.transport[i].currency = e.target.value as 'home' | 'foreign';
-                    })
-                  }
+                  onChange={(e) => mutate((d) => { d.transport[i].currency = e.target.value as 'home' | 'foreign'; })}
                 >
                   <option value="home">{home}</option>
                   <option value="foreign">{foreign}</option>
                 </select>
               </div>
-              {x.amount !== '' &&
-                x.amount !== null &&
-                !Number.isNaN(Number(x.amount)) &&
-                (() => {
-                  const conv = convertAmount(Number(x.amount), x.currency, rate);
-                  return (
-                    <div className="muted" style={{ marginTop: 4 }}>
-                      {conv.home !== null && conv.foreign !== null
-                        ? `≈ ${formatMoney(conv.home, home)} / ${formatMoney(conv.foreign, foreign)}`
-                        : `${formatMoney(x.currency === 'home' ? conv.home : conv.foreign, x.currency === 'home' ? home : foreign)} · 设置汇率后换算`}
-                    </div>
-                  );
-                })()}
+              {x.amount !== '' && x.amount !== null && !Number.isNaN(Number(x.amount)) && (() => {
+                const conv = convertAmount(Number(x.amount), x.currency, rate);
+                return (
+                  <p className="text-muted text-[13px] mt-0.5">
+                    {conv.home !== null && conv.foreign !== null
+                      ? `≈ ${formatMoney(conv.home, home)} / ${formatMoney(conv.foreign, foreign)}`
+                      : `${formatMoney(x.currency === 'home' ? conv.home : conv.foreign, x.currency === 'home' ? home : foreign)} · 设置汇率后换算`}
+                  </p>
+                );
+              })()}
             </article>
-          ))
-        )}
-      </div>
+          ))}
+        </div>
+      )}
+
       {editUnlocked && (
-        <button
-          className="add-btn edit-only"
-          onClick={() =>
-            mutate((d) => {
-              d.transport.push(defaultTransport());
-            })
-          }
-        >
+        <button className="add-btn edit-only mt-3" onClick={() => mutate((d) => { d.transport.push(defaultTransport()); })}>
           ＋ 添加交通参考
         </button>
       )}

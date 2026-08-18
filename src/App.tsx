@@ -28,39 +28,33 @@ export default function App() {
     return () => window.removeEventListener('popstate', onPop);
   }, []);
 
-  const goHome = useCallback(() => {
-    setURL(null);
-    setSlug(null);
-  }, []);
-
-  const openTrip = useCallback((newSlug: string) => {
-    setURL(newSlug);
-    setSlug(newSlug);
-  }, []);
+  const goHome = useCallback(() => { setURL(null); setSlug(null); }, []);
+  const openTrip = useCallback((newSlug: string) => { setURL(newSlug); setSlug(newSlug); }, []);
 
   const handleNewTrip = () => {
-    if (!hasConfig) {
-      alert('请先配置 .env。');
-      return;
-    }
+    if (!hasConfig) { alert('请先配置 .env。'); return; }
     setShowNewTrip(true);
   };
 
   return (
     <div id="app">
-      <header className="topbar">
-        <div className="brand">
-          <span>✈️</span>
-          <strong>Trip Planner</strong>
-          <small>多人协作旅行规划器</small>
+      {/* ── Topbar ── */}
+      <header className="sticky top-0 z-50 flex justify-between items-center gap-3 page-gutter h-[60px] bg-white/95 backdrop-blur-md border-b border-line shadow-xs">
+        <div className="flex items-center gap-2.5">
+          <div className="w-9 h-9 bg-gradient-to-br from-jade-dark to-jade rounded-sm grid place-items-center text-lg shrink-0 shadow-sm">
+            ✈️
+          </div>
+          <div>
+            <strong className="block text-[16px] font-bold font-serif text-jade-dark tracking-tight leading-none">
+              Trip Planner
+            </strong>
+            <small className="text-[11px] text-muted leading-none">多人协作旅行规划器</small>
+          </div>
         </div>
-        <div className="top-actions">
-          <button className="ghost" onClick={goHome}>
-            我的旅行
-          </button>
-          <button className="primary" onClick={handleNewTrip}>
-            ＋ 新建旅行
-          </button>
+
+        <div className="flex gap-2 items-center">
+          <button className="btn-ghost hidden sm:inline-flex" onClick={goHome}>我的旅行</button>
+          <button className="btn-primary" onClick={handleNewTrip}>＋ 新建旅行</button>
         </div>
       </header>
 
@@ -73,10 +67,7 @@ export default function App() {
       {showNewTrip && (
         <NewTripModal
           onClose={() => setShowNewTrip(false)}
-          onCreated={(createdSlug) => {
-            setShowNewTrip(false);
-            openTrip(createdSlug);
-          }}
+          onCreated={(createdSlug) => { setShowNewTrip(false); openTrip(createdSlug); }}
         />
       )}
       {showConfigMissing && <ConfigMissingModal onClose={() => setShowConfigMissing(false)} />}

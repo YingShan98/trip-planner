@@ -10,8 +10,7 @@ import type { ImportedTripMeta, TripListRow, TripState } from '../types';
 import NewTripModal from './modals/NewTripModal';
 
 export default function HomeView({
-  onOpenTrip,
-  onNewTrip,
+  onOpenTrip, onNewTrip,
 }: {
   onOpenTrip: (slug: string) => void;
   onNewTrip: () => void;
@@ -21,24 +20,16 @@ export default function HomeView({
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   const loadTrips = async () => {
-    if (!sb) {
-      setTrips([]);
-      return;
-    }
+    if (!sb) { setTrips([]); return; }
     const { data, error } = await sb
       .from('trip_documents')
       .select('id,slug,title,destination,start_date,end_date,currency,description,updated_at')
       .order('updated_at', { ascending: false });
-    if (error) {
-      toast('无法读取旅行列表：' + error.message);
-      return;
-    }
+    if (error) { toast('无法读取旅行列表：' + error.message); return; }
     setTrips(data || []);
   };
 
-  useEffect(() => {
-    loadTrips();
-  }, []);
+  useEffect(() => { loadTrips(); }, []);
 
   const handleDelete = async (slug: string) => {
     if (await deleteTripBySlug(slug)) await loadTrips();
@@ -46,19 +37,10 @@ export default function HomeView({
 
   const downloadTemplate = () => {
     downloadJSON('trip-template.json', {
-      meta: {
-        title: '旅行名称',
-        destination: '目的地',
-        start_date: '2027-01-01',
-        end_date: '2027-01-07',
-        currency: 'MYR',
-        description: '旅行简介',
-      },
+      meta: { title: '旅行名称', destination: '目的地', start_date: '2027-01-01', end_date: '2027-01-07', currency: 'MYR', description: '旅行简介' },
       data: templateState(),
     });
   };
-
-  const handleImportClick = () => fileInputRef.current?.click();
 
   const handleFileChange = async (e: ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
@@ -73,85 +55,102 @@ export default function HomeView({
   };
 
   return (
-    <main className="view">
-      <section className="hero home-hero">
-        <div>
-          <div className="eyebrow">YOUR TRAVEL WORKSPACE</div>
-          <h1>
-            把旅行计划放在一起，
-            <br />
-            和同行的人一起完成。
+    <main className="max-w-[1200px] mx-auto">
+
+      {/* ── Hero ── */}
+      <section className="relative overflow-hidden bg-gradient-to-br from-jade-dark via-jade to-jade-mid text-white content-gutter py-14 flex justify-between items-end gap-8">
+        <div className="relative z-10">
+          <div className="text-[11px] font-bold tracking-[0.14em] text-white/60 uppercase mb-3">
+            YOUR TRAVEL WORKSPACE
+          </div>
+          <h1 className="font-serif text-[34px] font-bold leading-[1.3] mb-3">
+            把旅行计划放在一起，<br />和同行的人一起完成。
           </h1>
-          <p>公开查看、密码编辑、实时同步。一个项目可以管理所有未来旅行。</p>
+          <p className="text-white/78 max-w-[560px] text-[15px] m-0">
+            公开查看、密码编辑、实时同步。一个项目可以管理所有未来旅行。
+          </p>
         </div>
-        <button className="primary large" onClick={onNewTrip}>
+        <button
+          className="btn-primary btn-lg shrink-0 bg-white/14 border-white/45 text-white hover:bg-white/24 hover:border-white/75 hover:shadow-md hover:-translate-y-0.5 relative z-10"
+          onClick={onNewTrip}
+        >
           ＋ 创建第一趟旅行
         </button>
+        {/* background radial highlight */}
+        <div className="absolute inset-0 bg-[radial-gradient(circle_at_80%_20%,rgba(255,255,255,0.06)_0%,transparent_55%)]" />
       </section>
-      <section className="section">
-        <div className="section-head" style={{ flexWrap: 'wrap', gap: 8 }}>
-          <h2>我的旅行</h2>
-          <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, alignItems: 'center' }}>
-            <span className="muted">{trips.length} 个旅行</span>
-            <button className="ghost" onClick={downloadTemplate}>
-              ⬇️ 下载模板
-            </button>
-            <button className="ghost" onClick={handleImportClick}>
-              ⬆️ 导入 JSON
-            </button>
-            <input
-              ref={fileInputRef}
-              type="file"
-              accept="application/json,.json"
-              style={{ display: 'none' }}
-              onChange={handleFileChange}
-            />
+
+      {/* ── Trip list ── */}
+      <section className="content-gutter py-7">
+        <div className="flex justify-between items-center gap-2.5 pb-3.5 mb-4 border-b-2 border-line flex-wrap">
+          <h2 className="font-serif text-[19px] font-bold text-jade-dark">我的旅行</h2>
+          <div className="flex flex-wrap gap-2 items-center">
+            <span className="text-muted text-[13px]">{trips.length} 个旅行</span>
+            <button className="btn-ghost" onClick={downloadTemplate}>⬇️ 下载模板</button>
+            <button className="btn-ghost" onClick={() => fileInputRef.current?.click()}>⬆️ 导入 JSON</button>
+            <input ref={fileInputRef} type="file" accept="application/json,.json" className="hidden" onChange={handleFileChange} />
           </div>
         </div>
-        <div className="trip-grid">
-          {trips.length === 0 ? (
-            <div className="empty">
-              还没有旅行。
-              <br />
-              创建第一趟旅行吧。
-            </div>
-          ) : (
-            trips.map((t) => (
-              <article className="trip-card" key={t.slug}>
-                <div>
-                  <h3>{t.title}</h3>
-                  <div className="meta">
-                    <span className="pill">📍 {t.destination || '目的地待定'}</span>
-                    <span className="pill">📅 {dateRange(t)}</span>
-                    <span className="pill">💰 {t.currency || 'MYR'}</span>
+
+        {trips.length === 0 ? (
+          <div className="empty-state">还没有旅行。<br />创建第一趟旅行吧。</div>
+        ) : (
+          <div className="grid grid-cols-[repeat(auto-fill,minmax(280px,1fr))] gap-4">
+            {trips.map((t) => (
+              <article
+                key={t.slug}
+                className="bg-surface border border-line rounded-lg overflow-hidden shadow-sm flex flex-col transition-all duration-150 hover:shadow-md hover:-translate-y-0.5"
+              >
+                {/* coloured top stripe */}
+                <div className="h-1 bg-gradient-to-r from-jade to-jade-mid" />
+
+                <div className="p-5 flex-1 flex flex-col gap-2.5">
+                  <div>
+                    <h3 className="font-serif text-[17px] font-bold text-jade-dark leading-[1.3] mb-2">{t.title}</h3>
+                    <div className="flex flex-wrap gap-1.5">
+                      <span className="pill">📍 {t.destination || '目的地待定'}</span>
+                      <span className="pill">📅 {dateRange(t)}</span>
+                      <span className="pill">💰 {t.currency || 'MYR'}</span>
+                    </div>
                   </div>
+                  {t.description && (
+                    <p className="text-muted text-[13px] leading-[1.55] flex-1">{t.description}</p>
+                  )}
                 </div>
-                <p className="muted">{t.description || ''}</p>
-                <div className="actions">
-                  <button className="primary" onClick={() => onOpenTrip(t.slug)}>
+
+                {/* action footer */}
+                <div className="flex border-t border-line">
+                  <button
+                    className="flex-1 py-2.5 px-2 text-[13px] font-bold text-jade bg-surface-2 border-r border-line transition-colors hover:bg-jade-tint"
+                    onClick={() => onOpenTrip(t.slug)}
+                  >
                     进入旅行
                   </button>
-                  <button className="ghost" onClick={() => copyTripLink(t.slug)}>
+                  <button
+                    className="flex-1 py-2.5 px-2 text-[13px] text-muted transition-colors hover:bg-surface-3 hover:text-ink-2 border-r border-line"
+                    onClick={() => copyTripLink(t.slug)}
+                  >
                     复制链接
                   </button>
-                  <button className="danger" onClick={() => handleDelete(t.slug)}>
+                  <button
+                    className="flex-1 py-2.5 px-2 text-[13px] text-muted transition-colors hover:bg-danger-tint hover:text-danger"
+                    onClick={() => handleDelete(t.slug)}
+                  >
                     删除
                   </button>
                 </div>
               </article>
-            ))
-          )}
-        </div>
+            ))}
+          </div>
+        )}
       </section>
+
       {importPayload && (
         <NewTripModal
           initialMeta={importPayload.meta}
           initialData={importPayload.data}
           onClose={() => setImportPayload(null)}
-          onCreated={(createdSlug) => {
-            setImportPayload(null);
-            onOpenTrip(createdSlug);
-          }}
+          onCreated={(createdSlug) => { setImportPayload(null); onOpenTrip(createdSlug); }}
         />
       )}
     </main>
