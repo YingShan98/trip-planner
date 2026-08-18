@@ -96,11 +96,17 @@ as $$
 declare
   v_trip_id uuid;
   stored_hash text;
+  v_free_edit boolean;
 begin
   select id into v_trip_id from public.trip_documents where slug = p_slug;
   if v_trip_id is null then return false; end if;
-  select edit_password_hash into stored_hash from public.trip_secrets where trip_id = v_trip_id;
-  if stored_hash is distinct from public._hash_password(p_password) then return false; end if;
+  -- Allow saving without a password when free editing is enabled in the stored data.
+  select coalesce((data->>'freeEdit')::boolean, false) into v_free_edit
+    from public.trip_documents where id = v_trip_id;
+  if not v_free_edit then
+    select edit_password_hash into stored_hash from public.trip_secrets where trip_id = v_trip_id;
+    if stored_hash is distinct from public._hash_password(p_password) then return false; end if;
+  end if;
   update public.trip_documents set data = coalesce(p_data,'{}'::jsonb), updated_at = now() where id = v_trip_id;
   return true;
 end;

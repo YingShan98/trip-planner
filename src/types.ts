@@ -77,6 +77,8 @@ export interface TripState {
   foreignCurrency: string;
   /** 1 unit of foreignCurrency = exchangeRate units of home currency, e.g. 1 CNY = 0.62 MYR */
   exchangeRate: number | string;
+  /** When true, anyone can enter edit mode without a password */
+  freeEdit: boolean;
 }
 
 export interface TripRow {

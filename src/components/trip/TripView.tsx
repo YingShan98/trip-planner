@@ -116,6 +116,12 @@ export default function TripView({
 
   const toggleEdit = async () => {
     if (editUnlocked) { setEditUnlocked(false); editPasswordRef.current = ''; return; }
+    if (stateRef.current?.freeEdit) {
+      editPasswordRef.current = '';
+      setEditUnlocked(true);
+      toast('已进入编辑模式（自由编辑）');
+      return;
+    }
     const pw = prompt('请输入该旅行的编辑密码');
     if (!pw || !sb) return;
     const { data, error } = await sb.rpc('verify_trip_password', { p_slug: slug, p_password: pw });
@@ -234,6 +240,7 @@ export default function TripView({
       {showSettings && (
         <SettingsModal
           trip={currentTrip} slug={slug} editUnlocked={editUnlocked} editPassword={editPasswordRef.current}
+          state={state} mutate={mutate}
           onClose={() => setShowSettings(false)}
           onSaved={(meta) => setCurrentTrip((prev) => (prev ? { ...prev, ...meta } : prev))}
           onChangePassword={() => { setShowSettings(false); setShowChangePw(true); }}

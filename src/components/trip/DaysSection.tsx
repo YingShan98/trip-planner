@@ -34,9 +34,15 @@ function LinkRows({ di, ai, links, editUnlocked, mutate }: {
   );
 }
 
-function ActivityRow({ a, di, ai, editUnlocked, mutate }: {
-  a: Activity; di: number; ai: number; editUnlocked: boolean; mutate: Mutate;
+function ActivityRow({ a, di, ai, total, editUnlocked, mutate }: {
+  a: Activity; di: number; ai: number; total: number; editUnlocked: boolean; mutate: Mutate;
 }) {
+  const moveActivity = (delta: number) => {
+    const j = ai + delta;
+    if (j < 0 || j >= total) return;
+    mutate((s) => { [s.days[di].items[ai], s.days[di].items[j]] = [s.days[di].items[j], s.days[di].items[ai]]; });
+  };
+
   return (
     <div className="bg-surface-2 border border-line rounded p-3 mb-2.5 transition-all duration-150 hover:border-line-strong hover:shadow-xs">
       <div className="grid grid-cols-[100px_1fr_auto] gap-2 items-center mb-2">
@@ -48,8 +54,12 @@ function ActivityRow({ a, di, ai, editUnlocked, mutate }: {
         <input className="inp editable" value={a.x} placeholder="行程内容"
           onChange={(e) => mutate((d) => { d.days[di].items[ai].x = e.target.value; })} />
         {editUnlocked && (
-          <button className="btn-mini edit-only"
-            onClick={() => mutate((d) => { d.days[di].items.splice(ai, 1); })}>×</button>
+          <div className="flex gap-1">
+            <button className="btn-mini edit-only" disabled={ai === 0} onClick={() => moveActivity(-1)}>↑</button>
+            <button className="btn-mini edit-only" disabled={ai === total - 1} onClick={() => moveActivity(1)}>↓</button>
+            <button className="btn-mini edit-only"
+              onClick={() => mutate((d) => { d.days[di].items.splice(ai, 1); })}>×</button>
+          </div>
         )}
       </div>
       <div className="grid grid-cols-2 gap-2">
@@ -132,7 +142,7 @@ function DayCard({ d, i, total, collapsed, editUnlocked, mutate, mutateNoSave }:
           )}
 
           {d.items.map((a, j) => (
-            <ActivityRow key={j} a={a} di={i} ai={j} editUnlocked={editUnlocked} mutate={mutate} />
+            <ActivityRow key={j} a={a} di={i} ai={j} total={d.items.length} editUnlocked={editUnlocked} mutate={mutate} />
           ))}
 
           {editUnlocked && (
