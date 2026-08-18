@@ -18,10 +18,17 @@ import NotesSection from './NotesSection';
 import SettingsModal from '../modals/SettingsModal';
 import ChangePasswordModal from '../modals/ChangePasswordModal';
 
+function buildShareLink(slug: string): string {
+  const u = new URL(location.href);
+  u.searchParams.set('trip', slug);
+  u.searchParams.set('readonly', '1');
+  return u.toString();
+}
+
 export default function TripView({
-  slug, onHome, onDeleted,
+  slug, readOnly = false, onHome, onDeleted,
 }: {
-  slug: string; onHome: () => void; onDeleted: () => void;
+  slug: string; readOnly?: boolean; onHome: () => void; onDeleted: () => void;
 }) {
   const [currentTrip, setCurrentTrip]       = useState<TripRow | null>(null);
   const [state, setState]                   = useState<TripState | null>(null);
@@ -132,6 +139,11 @@ export default function TripView({
 
   const handleDeleteCurrent = async () => { if (await deleteTripBySlug(slug)) onDeleted(); };
 
+  const copyShareLink = async () => {
+    await navigator.clipboard.writeText(buildShareLink(slug));
+    toast('只读分享链接已复制');
+  };
+
   const exportJSON = () => {
     if (!currentTrip || !state) return;
     downloadJSON((slug || 'trip') + '.json', {
@@ -150,10 +162,15 @@ export default function TripView({
   return (
     <main className={`min-h-[calc(100vh-60px)] bg-bg${editUnlocked ? '' : ' readonly'}`}>
 
-      {/* ── Edit mode banner ── */}
+      {/* ── Banners ── */}
       {editUnlocked && (
         <div className="content-gutter py-2 bg-gold-tint border-b border-gold-line text-gold text-[13px] font-semibold flex items-center gap-2">
           ✏️ 编辑模式已开启 — 修改将在 0.65 秒后自动保存
+        </div>
+      )}
+      {readOnly && (
+        <div className="content-gutter py-2 bg-blue-50 border-b border-blue-200 text-blue-700 text-[13px] font-semibold flex items-center gap-2">
+          👁 只读分享模式 — 你正在查看一个共享的只读版本
         </div>
       )}
 
@@ -181,36 +198,60 @@ export default function TripView({
                 : ''}
             </span>
             <span className="pill bg-white/13 border-white/22 text-white/90 hero-pill">
-              {editUnlocked ? '✏️ 可编辑' : '👀 只读查看'}
+              {editUnlocked ? '✏️ 可编辑' : readOnly ? '🔗 只读分享' : '👀 只读查看'}
             </span>
-            <span className="pill bg-white/13 border-white/22 text-white/90 hero-pill text-[11.5px]">
-              {editUnlocked ? '编辑模式' : syncStatus}
-            </span>
+            {!readOnly && (
+              <span className="pill bg-white/13 border-white/22 text-white/90 hero-pill text-[11.5px]">
+                {editUnlocked ? '编辑模式' : syncStatus}
+              </span>
+            )}
           </div>
 
           {/* Toolbar */}
           <div className="flex flex-wrap gap-2 mt-5 pt-5 border-t border-white/14">
-            {[
-              { label: editUnlocked ? '🔒 锁定编辑' : '🔓 编辑', action: toggleEdit, danger: false },
-              { label: '⚙️ 旅行设置', action: () => setShowSettings(true), danger: false },
-              { label: '⬇️ 导出 JSON', action: exportJSON, danger: false },
-              { label: '🖨 打印', action: () => window.print(), danger: false },
-            ].map(({ label, action }) => (
+            {!readOnly && (
               <button
-                key={label}
                 className="btn bg-white/10 border-white/20 text-white/88 text-[13px] px-3.5 py-2 hover:bg-white/20 hover:border-white/40 hover:text-white hover:-translate-y-px"
-                onClick={action}
+                onClick={toggleEdit}
               >
-                {label}
+                {editUnlocked ? '🔒 锁定编辑' : '🔓 编辑'}
               </button>
-            ))}
-            <span className="flex-1" />
+            )}
+            {!readOnly && (
+              <button
+                className="btn bg-white/10 border-white/20 text-white/88 text-[13px] px-3.5 py-2 hover:bg-white/20 hover:border-white/40 hover:text-white hover:-translate-y-px"
+                onClick={() => setShowSettings(true)}
+              >
+                ⚙️ 旅行设置
+              </button>
+            )}
             <button
-              className="btn bg-red-900/20 border-red-400/35 text-red-200 text-[13px] px-3.5 py-2 hover:bg-red-900/38 hover:border-red-400/60 hover:text-white"
-              onClick={handleDeleteCurrent}
+              className="btn bg-white/10 border-white/20 text-white/88 text-[13px] px-3.5 py-2 hover:bg-white/20 hover:border-white/40 hover:text-white hover:-translate-y-px"
+              onClick={exportJSON}
             >
-              删除旅行
+              ⬇️ 导出 JSON
             </button>
+            <button
+              className="btn bg-white/10 border-white/20 text-white/88 text-[13px] px-3.5 py-2 hover:bg-white/20 hover:border-white/40 hover:text-white hover:-translate-y-px"
+              onClick={() => window.print()}
+            >
+              🖨 打印
+            </button>
+            <button
+              className="btn bg-white/10 border-white/20 text-white/88 text-[13px] px-3.5 py-2 hover:bg-white/20 hover:border-white/40 hover:text-white hover:-translate-y-px"
+              onClick={copyShareLink}
+            >
+              📤 复制分享链接
+            </button>
+            <span className="flex-1" />
+            {!readOnly && (
+              <button
+                className="btn bg-red-900/20 border-red-400/35 text-red-200 text-[13px] px-3.5 py-2 hover:bg-red-900/38 hover:border-red-400/60 hover:text-white"
+                onClick={handleDeleteCurrent}
+              >
+                删除旅行
+              </button>
+            )}
           </div>
         </div>
       </header>

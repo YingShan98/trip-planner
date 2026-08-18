@@ -10,8 +10,13 @@ function getSlugFromURL(): string | null {
   return new URL(location.href).searchParams.get('trip');
 }
 
+function getReadOnlyFromURL(): boolean {
+  return new URL(location.href).searchParams.get('readonly') === '1';
+}
+
 function setURL(slug: string | null) {
   const u = new URL(location.href);
+  u.searchParams.delete('readonly');
   if (slug) u.searchParams.set('trip', slug);
   else u.searchParams.delete('trip');
   history.pushState({}, '', u);
@@ -19,11 +24,12 @@ function setURL(slug: string | null) {
 
 export default function App() {
   const [slug, setSlug] = useState<string | null>(getSlugFromURL());
+  const [readOnly, setReadOnly] = useState(getReadOnlyFromURL());
   const [showNewTrip, setShowNewTrip] = useState(false);
   const [showConfigMissing, setShowConfigMissing] = useState(!hasConfig);
 
   useEffect(() => {
-    const onPop = () => setSlug(getSlugFromURL());
+    const onPop = () => { setSlug(getSlugFromURL()); setReadOnly(getReadOnlyFromURL()); };
     window.addEventListener('popstate', onPop);
     return () => window.removeEventListener('popstate', onPop);
   }, []);
@@ -59,7 +65,7 @@ export default function App() {
       </header>
 
       {slug ? (
-        <TripView slug={slug} onHome={goHome} onDeleted={goHome} />
+        <TripView slug={slug} readOnly={readOnly} onHome={goHome} onDeleted={goHome} />
       ) : (
         <HomeView onOpenTrip={openTrip} onNewTrip={handleNewTrip} />
       )}

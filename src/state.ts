@@ -1,4 +1,4 @@
-import type { Activity, BudgetItem, Day, Hotel, TransportItem, TripState } from './types';
+import type { Activity, BudgetItem, Day, Hotel, PackingItem, TransportItem, TripState } from './types';
 
 export const uid = (p: string) => p + '_' + Math.random().toString(36).slice(2, 8);
 
@@ -6,6 +6,7 @@ export function blankState(): TripState {
   return {
     days: [{ n: 1, title: 'Day 1', intensity: 'light', steps: '', mapUrl: '', items: [], notes: '' }],
     checklist: [],
+    packing: [],
     hotels: [],
     transport: [],
     budget: [],
@@ -59,6 +60,7 @@ export function templateState(): TripState {
       },
     ],
     checklist: [{ id: uid('c'), text: '示例：确认护照有效期', done: false }],
+    packing: [],
     hotels: [
       {
         rank: '首选',
@@ -103,6 +105,9 @@ export function normalize(s: unknown): TripState {
         }))
       : x.days;
   x.checklist = Array.isArray(src.checklist) ? src.checklist : [];
+  x.packing = Array.isArray(src.packing)
+    ? src.packing.map((p: PackingItem) => ({ id: p.id || uid('p'), text: p.text || '', done: p.done === true, category: p.category || '其他' }))
+    : [];
   x.hotels = Array.isArray(src.hotels)
     ? src.hotels.map((h) => ({ ...defaultHotel(), ...h, link: Array.isArray(h.link) ? h.link : [] }))
     : [];

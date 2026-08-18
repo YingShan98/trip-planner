@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { uid } from '../../state';
 import type { Mutate, TripState } from '../../types';
+import PackingModal from '../modals/PackingModal';
 
 export default function Checklist({
   state, editUnlocked, mutate,
@@ -8,6 +9,7 @@ export default function Checklist({
   state: TripState; editUnlocked: boolean; mutate: Mutate;
 }) {
   const [newText, setNewText] = useState('');
+  const [showPacking, setShowPacking] = useState(false);
 
   const add = () => {
     const v = newText.trim();
@@ -16,11 +18,25 @@ export default function Checklist({
     setNewText('');
   };
 
+  const packedCount = state.packing.filter((x) => x.done).length;
+  const packingTotal = state.packing.length;
+
   return (
     <section className="py-7 border-b border-line">
       <div className="flex justify-between items-center gap-2.5 pb-3.5 mb-4 border-b-2 border-line flex-wrap">
-        <h2 className="font-serif text-[19px] font-bold text-jade-dark">☑️ Checklist</h2>
-        <span className="text-muted text-[13px]">出发前要完成的事项</span>
+        <h2 className="font-serif text-[19px] font-bold text-jade-dark">☑️ 出发准备</h2>
+        <div className="flex items-center gap-2.5">
+          <span className="text-muted text-[13px]">出发前要完成的事项</span>
+          <button
+            className="btn text-[12.5px] px-3 py-1.5 bg-surface-3 border-line hover:bg-surface hover:border-line-strong flex items-center gap-1.5"
+            onClick={() => setShowPacking(true)}
+          >
+            🧳 打包清单
+            {packingTotal > 0 && (
+              <span className="text-[11px] text-muted">({packedCount}/{packingTotal})</span>
+            )}
+          </button>
+        </div>
       </div>
 
       <div className="flex flex-col gap-2">
@@ -65,6 +81,15 @@ export default function Checklist({
           />
           <button className="btn-primary" onClick={add}>添加</button>
         </div>
+      )}
+
+      {showPacking && (
+        <PackingModal
+          state={state}
+          editUnlocked={editUnlocked}
+          mutate={mutate}
+          onClose={() => setShowPacking(false)}
+        />
       )}
     </section>
   );

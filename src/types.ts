@@ -32,6 +32,13 @@ export interface ChecklistItem {
   done: boolean;
 }
 
+export interface PackingItem {
+  id: string;
+  text: string;
+  done: boolean;
+  category: string;
+}
+
 export interface Hotel {
   rank: string;
   name: string;
@@ -68,6 +75,7 @@ export interface NoteItem {
 export interface TripState {
   days: Day[];
   checklist: ChecklistItem[];
+  packing: PackingItem[];
   hotels: Hotel[];
   transport: TransportItem[];
   budget: BudgetItem[];

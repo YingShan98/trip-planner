@@ -5,6 +5,8 @@ export default function Dashboard({
 }: {
   state: TripState; description: string; total: number; done: number;
 }) {
+  const packed = state.packing.filter((x) => x.done).length;
+
   return (
     <section className="py-7 border-b border-line">
       <div className="flex justify-between items-center gap-2.5 pb-3.5 mb-4 border-b-2 border-line flex-wrap">
@@ -15,7 +17,8 @@ export default function Dashboard({
         {[
           { label: '旅行天数', value: `${state.days.length} 天` },
           { label: '行程项目', value: `${total} 项` },
-          { label: 'Checklist', value: `${done}/${state.checklist.length}` },
+          { label: '出发准备', value: `${done}/${state.checklist.length}` },
+          { label: '打包进度', value: `${packed}/${state.packing.length}` },
           { label: '酒店候选', value: `${state.hotels.length} 个` },
         ].map(({ label, value }) => (
           <div
