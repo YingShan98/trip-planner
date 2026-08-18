@@ -34,6 +34,46 @@ export function defaultBudget(): BudgetItem {
   return { category: '', unit: '', quantity: 1, unitPrice: '', note: '' };
 }
 
+export function templateState(): TripState {
+  return {
+    days: [
+      {
+        n: 1,
+        title: 'Day 1',
+        intensity: 'light',
+        steps: '示例：步行约 2 小时，适合大部分体力',
+        mapUrl: 'https://maps.google.com/',
+        items: [
+          {
+            t: '上午',
+            x: '示例：广州塔观景台',
+            move: '示例：地铁 3 号线',
+            fee: '示例：RM 50/人',
+            link: [{ label: '官网', url: 'https://example.com' }],
+          },
+        ],
+        notes: '示例：老人可在附近咖啡厅休息',
+      },
+    ],
+    checklist: [{ id: uid('c'), text: '示例：确认护照有效期', done: false }],
+    hotels: [
+      {
+        rank: '首选',
+        name: '示例酒店名称',
+        addr: '示例地址 / 地铁站',
+        warn: '示例：入住需信用卡预授权',
+        pointsText: '优点：地理位置好\n缺点：价格较高',
+        link: [{ label: '预订链接', url: 'https://example.com' }],
+        notes: '示例讨论备注',
+      },
+    ],
+    transport: [{ type: '示例：7 座商务车', description: '示例：机场接送 + 市内包车', price: '示例：¥600/天' }],
+    budget: [{ category: '示例：住宿', unit: '晚', quantity: 3, unitPrice: 300, note: '示例备注' }],
+    notes: [{ author: '示例：小明', text: '示例留言内容', ts: '2027-01-01 12:00:00' }],
+    collapsed: {},
+  };
+}
+
 export function normalize(s: unknown): TripState {
   const src = (s && typeof s === 'object' ? (s as Partial<TripState>) : {}) as Partial<TripState>;
   const x = blankState();

@@ -85,6 +85,15 @@ export interface TripRow {
 
 export type Mutate = (fn: (draft: TripState) => void) => void;
 
+export interface ImportedTripMeta {
+  title?: string;
+  destination?: string;
+  currency?: string;
+  start_date?: string | null;
+  end_date?: string | null;
+  description?: string;
+}
+
 export type TripListRow = Pick<
   TripRow,
   'id' | 'slug' | 'title' | 'destination' | 'start_date' | 'end_date' | 'currency' | 'description' | 'updated_at'

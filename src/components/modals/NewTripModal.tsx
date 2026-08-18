@@ -2,25 +2,29 @@ import { useState } from 'react';
 import { sb } from '../../lib/supabase';
 import { toast } from '../../lib/toast';
 import { blankState } from '../../state';
-import type { TripRow } from '../../types';
+import type { ImportedTripMeta, TripRow, TripState } from '../../types';
 import Modal from '../Modal';
 
 export default function NewTripModal({
   onClose,
   onCreated,
+  initialMeta,
+  initialData,
 }: {
   onClose: () => void;
   onCreated: (slug: string) => void;
+  initialMeta?: ImportedTripMeta;
+  initialData?: TripState;
 }) {
   const [admin, setAdmin] = useState('');
-  const [title, setTitle] = useState('');
-  const [dest, setDest] = useState('');
-  const [currency, setCurrency] = useState('MYR');
-  const [start, setStart] = useState('');
-  const [end, setEnd] = useState('');
+  const [title, setTitle] = useState(initialMeta?.title ?? '');
+  const [dest, setDest] = useState(initialMeta?.destination ?? '');
+  const [currency, setCurrency] = useState(initialMeta?.currency || 'MYR');
+  const [start, setStart] = useState(initialMeta?.start_date ?? '');
+  const [end, setEnd] = useState(initialMeta?.end_date ?? '');
   const [slug, setSlug] = useState('');
   const [edit, setEdit] = useState('');
-  const [desc, setDesc] = useState('');
+  const [desc, setDesc] = useState(initialMeta?.description ?? '');
 
   const createTrip = async () => {
     const cleanSlug = slug.trim().toLowerCase();
@@ -39,7 +43,7 @@ export default function NewTripModal({
       p_currency: currency || 'MYR',
       p_description: desc,
       p_edit_password: edit,
-      p_data: blankState(),
+      p_data: initialData ?? blankState(),
     });
     if (error) {
       toast(error.message);
@@ -54,6 +58,7 @@ export default function NewTripModal({
     <Modal onClose={onClose}>
       <h2>＋ 创建新旅行</h2>
       <p className="muted">创建旅行需要系统管理密码；同行者之后只需要旅行自己的编辑密码。</p>
+      {initialData && <p className="muted">已从 JSON 文件导入行程内容，请填写 Slug 和密码以创建旅行。</p>}
       <div className="form-grid">
         <div className="field full">
           <label>系统管理密码</label>

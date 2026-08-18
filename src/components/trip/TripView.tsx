@@ -2,6 +2,7 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import { sb } from '../../lib/supabase';
 import { toast } from '../../lib/toast';
 import { dateRange } from '../../lib/format';
+import { downloadJSON } from '../../lib/download';
 import { normalize } from '../../state';
 import { deleteTripBySlug } from '../../lib/tripActions';
 import type { TripRow, TripState } from '../../types';
@@ -188,34 +189,7 @@ export default function TripView({
       },
       data: state,
     };
-    const blob = new Blob([JSON.stringify(payload, null, 2)], { type: 'application/json' });
-    const a = document.createElement('a');
-    a.href = URL.createObjectURL(blob);
-    a.download = (slug || 'trip') + '.json';
-    a.click();
-    URL.revokeObjectURL(a.href);
-  };
-
-  const importJSON = () => {
-    const input = document.createElement('input');
-    input.type = 'file';
-    input.accept = 'application/json,.json';
-    input.onchange = async () => {
-      const file = input.files?.[0];
-      if (!file) return;
-      try {
-        const obj = JSON.parse(await file.text());
-        setState(normalize(obj.data || obj));
-        if (obj.meta && editUnlockedRef.current) {
-          setCurrentTrip((prev) => (prev ? { ...prev, ...obj.meta } : prev));
-        }
-        scheduleSave();
-        toast('JSON 已导入；记得保存同步');
-      } catch (e) {
-        toast('JSON 格式无效：' + (e as Error).message);
-      }
-    };
-    input.click();
+    downloadJSON((slug || 'trip') + '.json', payload);
   };
 
   if (!currentTrip || !state) {
@@ -254,9 +228,6 @@ export default function TripView({
             </button>
             <button className="ghost" onClick={exportJSON}>
               ⬇️ 导出 JSON
-            </button>
-            <button className="ghost" onClick={importJSON}>
-              ⬆️ 导入 JSON
             </button>
             <button className="ghost" onClick={() => window.print()}>
               🖨 打印
