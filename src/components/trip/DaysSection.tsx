@@ -1,3 +1,4 @@
+import { useState } from 'react';
 import { defaultActivity, defaultDay } from '../../state';
 import type { Activity, Day, Intensity, Mutate, TripState } from '../../types';
 
@@ -77,6 +78,8 @@ function DayCard({ d, i, total, collapsed, editUnlocked, mutate, mutateNoSave }:
   d: Day; i: number; total: number; collapsed: boolean;
   editUnlocked: boolean; mutate: Mutate; mutateNoSave: Mutate;
 }) {
+  const [showMap, setShowMap] = useState(false);
+
   const moveDay = (delta: number) => {
     const j = i + delta;
     if (j < 0 || j >= total) return;
@@ -100,6 +103,14 @@ function DayCard({ d, i, total, collapsed, editUnlocked, mutate, mutateNoSave }:
         />
         <span className={`pill border ${intensityClass(d.intensity)}`}>{intensityLabel(d.intensity)}</span>
         <div className="flex gap-1.5 ml-auto">
+          {d.mapUrl && (
+            <button
+              className={`btn-mini flex items-center gap-1 ${showMap ? 'bg-jade-dark !text-white border-jade-dark' : ''}`}
+              onClick={() => setShowMap((v) => !v)}
+            >
+              🗺️ {showMap ? '收起地图' : '查看地图'}
+            </button>
+          )}
           <button className="btn-mini"
             onClick={() => mutateNoSave((s) => { s.collapsed[i] = !s.collapsed[i]; })}>
             {collapsed ? '展开' : '折叠'}
@@ -117,6 +128,35 @@ function DayCard({ d, i, total, collapsed, editUnlocked, mutate, mutateNoSave }:
         </div>
       </div>
 
+      {/* Map panel — independent of collapse, shown when toggled */}
+      {showMap && d.mapUrl && (
+        <div className="border-b border-line">
+          <div className="flex items-center justify-between px-4 py-1.5 bg-surface-2 border-b border-dashed border-line">
+            <span className="text-[11.5px] text-muted">地图预览</span>
+            <a
+              href={d.mapUrl}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="text-jade text-[12px] hover:underline"
+            >
+              ↗ 在新标签页打开
+            </a>
+          </div>
+          <iframe
+            src={d.mapUrl}
+            className="w-full border-0 block"
+            style={{ height: '260px' }}
+            loading="lazy"
+            referrerPolicy="no-referrer-when-downgrade"
+            title={`${d.title} 地图`}
+            allowFullScreen
+          />
+          <p className="px-4 py-2 text-[11px] text-muted bg-surface-2 border-t border-dashed border-line">
+            提示：请粘贴 Google Maps 嵌入链接（地图页面 → 分享 → 嵌入地图 → 复制 src 中的 URL），普通链接无法在此预览。
+          </p>
+        </div>
+      )}
+
       {/* Day body */}
       {!collapsed && (
         <div className="p-4">
@@ -129,17 +169,13 @@ function DayCard({ d, i, total, collapsed, editUnlocked, mutate, mutateNoSave }:
             </select>
             <input className="inp editable flex-1 min-w-[180px]" value={d.steps} placeholder="步行时长/体力提示"
               onChange={(e) => mutate((s) => { s.days[i].steps = e.target.value; })} />
-            <input className="inp editable flex-1 min-w-[180px]" value={d.mapUrl} placeholder="Google Maps / 地图链接"
-              onChange={(e) => mutate((s) => { s.days[i].mapUrl = e.target.value; })} />
+            <input
+              className="inp editable flex-1 min-w-[180px]"
+              value={d.mapUrl}
+              placeholder="地图嵌入链接（Google Maps → 分享 → 嵌入地图 → 复制 src URL）"
+              onChange={(e) => mutate((s) => { s.days[i].mapUrl = e.target.value; })}
+            />
           </div>
-
-          {d.mapUrl && (
-            <p className="mb-3">
-              <a href={d.mapUrl} target="_blank" rel="noopener noreferrer" className="text-jade text-[13.5px] hover:underline">
-                🗺️ 打开路线地图
-              </a>
-            </p>
-          )}
 
           {d.items.map((a, j) => (
             <ActivityRow key={j} a={a} di={i} ai={j} total={d.items.length} editUnlocked={editUnlocked} mutate={mutate} />

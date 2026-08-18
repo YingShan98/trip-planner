@@ -21,30 +21,43 @@ export default function TransportSection({
       {state.transport.length === 0 ? (
         <div className="empty-state">暂无交通参考</div>
       ) : (
-        <div className="grid grid-cols-[repeat(auto-fill,minmax(270px,1fr))] gap-3.5">
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3.5">
           {state.transport.map((x, i) => (
-            <article key={i} className="bg-surface border border-line rounded-lg p-4 shadow-xs flex flex-col gap-2">
-              <div className="flex gap-1.5">
+            <article key={i} className="bg-surface border border-line rounded-lg p-4 shadow-xs flex flex-col gap-2.5">
+
+              {/* Row 1: type name + delete */}
+              <div className="flex items-start gap-2">
                 <input
-                  className="inp editable flex-1 font-bold"
+                  className="inp editable flex-1 font-bold text-[15px]"
                   value={x.type}
                   placeholder="交通方式 / 车型"
                   onChange={(e) => mutate((d) => { d.transport[i].type = e.target.value; })}
                 />
-                <button className="btn-mini edit-only shrink-0" onClick={() => mutate((d) => { d.transport.splice(i, 1); })}>×</button>
+                <button
+                  className="btn-mini edit-only shrink-0 mt-0.5"
+                  onClick={() => mutate((d) => { d.transport.splice(i, 1); })}
+                >
+                  ×
+                </button>
               </div>
+
+              {/* Description */}
               <textarea
-                className="inp editable min-h-[56px] resize-y"
+                className="inp editable min-h-[56px] resize-y text-[13px]"
                 value={x.description}
-                placeholder="说明"
+                placeholder="说明（路线、时间、安排等）"
                 onChange={(e) => mutate((d) => { d.transport[i].description = e.target.value; })}
               />
+
+              {/* Price label */}
               <input
-                className="inp editable"
+                className="inp editable text-[13px]"
                 value={x.price}
-                placeholder="价格说明，如 /天、/人"
+                placeholder="价格说明，如 / 天、/ 人"
                 onChange={(e) => mutate((d) => { d.transport[i].price = e.target.value; })}
               />
+
+              {/* Amount + currency row */}
               <div className="flex gap-1.5">
                 <input
                   className="inp editable flex-1"
@@ -62,10 +75,12 @@ export default function TransportSection({
                   <option value="foreign">{foreign}</option>
                 </select>
               </div>
+
+              {/* Converted amount */}
               {x.amount !== '' && x.amount !== null && !Number.isNaN(Number(x.amount)) && (() => {
                 const conv = convertAmount(Number(x.amount), x.currency, rate);
                 return (
-                  <p className="text-muted text-[13px] mt-0.5">
+                  <p className="text-muted text-[12.5px]">
                     {conv.home !== null && conv.foreign !== null
                       ? `≈ ${formatMoney(conv.home, home)} / ${formatMoney(conv.foreign, foreign)}`
                       : `${formatMoney(x.currency === 'home' ? conv.home : conv.foreign, x.currency === 'home' ? home : foreign)} · 设置汇率后换算`}
@@ -78,7 +93,10 @@ export default function TransportSection({
       )}
 
       {editUnlocked && (
-        <button className="add-btn edit-only mt-3" onClick={() => mutate((d) => { d.transport.push(defaultTransport()); })}>
+        <button
+          className="add-btn edit-only mt-3"
+          onClick={() => mutate((d) => { d.transport.push(defaultTransport()); })}
+        >
           ＋ 添加交通参考
         </button>
       )}

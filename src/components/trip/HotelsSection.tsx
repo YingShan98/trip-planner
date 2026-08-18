@@ -16,39 +16,104 @@ export default function HotelsSection({
       {state.hotels.length === 0 ? (
         <div className="empty-state">暂无酒店候选</div>
       ) : (
-        <div className="grid grid-cols-[repeat(auto-fill,minmax(270px,1fr))] gap-3.5">
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3.5">
           {state.hotels.map((h, i) => (
-            <article key={i} className="bg-surface border border-line rounded-lg p-4 shadow-xs flex flex-col gap-2">
-              <div className="flex gap-1.5">
+            <article key={i} className="bg-surface border border-line rounded-lg p-4 shadow-xs flex flex-col gap-2.5">
+
+              {/* Row 1: rank badge + delete */}
+              <div className="flex items-center justify-between gap-2">
                 <input
-                  className="inp editable w-20 shrink-0"
+                  className="inp editable w-[90px] text-[12px] shrink-0"
                   value={h.rank}
-                  placeholder="排名"
+                  placeholder="排名 / 状态"
                   onChange={(e) => mutate((d) => { d.hotels[i].rank = e.target.value; })}
                 />
-                <input
-                  className="inp editable flex-1 font-bold"
-                  value={h.name}
-                  placeholder="酒店名称"
-                  onChange={(e) => mutate((d) => { d.hotels[i].name = e.target.value; })}
-                />
-                <button className="btn-mini edit-only shrink-0" onClick={() => mutate((d) => { d.hotels.splice(i, 1); })}>×</button>
+                <button
+                  className="btn-mini edit-only shrink-0"
+                  onClick={() => mutate((d) => { d.hotels.splice(i, 1); })}
+                >
+                  ×
+                </button>
               </div>
-              <input className="inp editable" value={h.addr} placeholder="地址 / 地铁 / 区域" onChange={(e) => mutate((d) => { d.hotels[i].addr = e.target.value; })} />
-              <input className="inp editable" value={h.warn} placeholder="⚠️ 注意事项" onChange={(e) => mutate((d) => { d.hotels[i].warn = e.target.value; })} />
-              <textarea className="inp editable min-h-[70px] resize-y" value={h.pointsText} placeholder="优点 / 缺点 / 适合原因" onChange={(e) => mutate((d) => { d.hotels[i].pointsText = e.target.value; })} />
-              <textarea className="inp editable min-h-[52px] resize-y" value={h.notes} placeholder="讨论备注" onChange={(e) => mutate((d) => { d.hotels[i].notes = e.target.value; })} />
 
+              {/* Row 2: hotel name — full width, prominent */}
+              <input
+                className="inp editable font-bold text-[15px]"
+                value={h.name}
+                placeholder="酒店名称"
+                onChange={(e) => mutate((d) => { d.hotels[i].name = e.target.value; })}
+              />
+
+              {/* Row 3+: detail fields */}
+              <input
+                className="inp editable text-[13px]"
+                value={h.addr}
+                placeholder="📍 地址 / 地铁站 / 区域"
+                onChange={(e) => mutate((d) => { d.hotels[i].addr = e.target.value; })}
+              />
+              <input
+                className="inp editable text-[13px]"
+                value={h.warn}
+                placeholder="⚠️ 注意事项"
+                onChange={(e) => mutate((d) => { d.hotels[i].warn = e.target.value; })}
+              />
+              <textarea
+                className="inp editable min-h-[72px] resize-y text-[13px]"
+                value={h.pointsText}
+                placeholder="优点 / 缺点 / 适合原因"
+                onChange={(e) => mutate((d) => { d.hotels[i].pointsText = e.target.value; })}
+              />
+              <textarea
+                className="inp editable min-h-[52px] resize-y text-[13px]"
+                value={h.notes}
+                placeholder="讨论备注"
+                onChange={(e) => mutate((d) => { d.hotels[i].notes = e.target.value; })}
+              />
+
+              {/* Links */}
               <div className="pt-2 border-t border-dashed border-line">
                 {h.link.map((l, li) => (
                   <div key={li} className="grid grid-cols-[1fr_1.6fr_auto] gap-1.5 mb-1.5 items-center">
-                    <input className="inp editable" value={l.label} onChange={(e) => mutate((d) => { d.hotels[i].link[li].label = e.target.value; })} />
-                    <input className="inp editable" value={l.url} onChange={(e) => mutate((d) => { d.hotels[i].link[li].url = e.target.value; })} />
-                    <button className="btn-mini edit-only" onClick={() => mutate((d) => { d.hotels[i].link.splice(li, 1); })}>×</button>
+                    <input
+                      className="inp editable text-[12px]"
+                      value={l.label}
+                      placeholder="名称"
+                      onChange={(e) => mutate((d) => { d.hotels[i].link[li].label = e.target.value; })}
+                    />
+                    <input
+                      className="inp editable text-[12px]"
+                      value={l.url}
+                      placeholder="https://..."
+                      onChange={(e) => mutate((d) => { d.hotels[i].link[li].url = e.target.value; })}
+                    />
+                    <button
+                      className="btn-mini edit-only"
+                      onClick={() => mutate((d) => { d.hotels[i].link.splice(li, 1); })}
+                    >
+                      ×
+                    </button>
                   </div>
                 ))}
+                {!editUnlocked && h.link.length > 0 && (
+                  <div className="flex flex-wrap gap-2 mt-1">
+                    {h.link.map((l, li) => (
+                      <a
+                        key={li}
+                        href={l.url}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="text-jade text-[12.5px] hover:underline"
+                      >
+                        {l.label || l.url}
+                      </a>
+                    ))}
+                  </div>
+                )}
                 {editUnlocked && (
-                  <button className="btn-mini edit-only mt-1" onClick={() => mutate((d) => { d.hotels[i].link.push({ label: '链接', url: '' }); })}>
+                  <button
+                    className="btn-mini edit-only mt-1"
+                    onClick={() => mutate((d) => { d.hotels[i].link.push({ label: '链接', url: '' }); })}
+                  >
                     ＋ 添加链接
                   </button>
                 )}
@@ -59,7 +124,10 @@ export default function HotelsSection({
       )}
 
       {editUnlocked && (
-        <button className="add-btn edit-only mt-3" onClick={() => mutate((d) => { d.hotels.push(defaultHotel()); })}>
+        <button
+          className="add-btn edit-only mt-3"
+          onClick={() => mutate((d) => { d.hotels.push(defaultHotel()); })}
+        >
           ＋ 添加酒店
         </button>
       )}
