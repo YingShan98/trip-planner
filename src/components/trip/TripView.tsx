@@ -6,10 +6,12 @@ import { downloadJSON } from '../../lib/download';
 import { normalize } from '../../state';
 import { deleteTripBySlug } from '../../lib/tripActions';
 import type { TripRow, TripState } from '../../types';
+import { parseRate } from '../../lib/currency';
 import Dashboard from './Dashboard';
 import Checklist from './Checklist';
 import DaysSection from './DaysSection';
 import HotelsSection from './HotelsSection';
+import CurrencySection from './CurrencySection';
 import TransportSection from './TransportSection';
 import BudgetSection from './BudgetSection';
 import NotesSection from './NotesSection';
@@ -215,7 +217,14 @@ export default function TripView({
             {currentTrip.destination || '目的地待定'} · {dateRange(currentTrip)}
           </p>
           <div className="hero-meta">
-            <span className="pill">💰 {currentTrip.currency || 'MYR'}</span>
+            <span className="pill">
+              💰 {currentTrip.currency || 'MYR'}
+              {state.foreignCurrency
+                ? ` · ${state.foreignCurrency}${
+                    parseRate(state.exchangeRate) ? ` @ ${parseRate(state.exchangeRate)}` : ' (未设汇率)'
+                  }`
+                : ''}
+            </span>
             <span className="pill">{editUnlocked ? '✏️ 可编辑' : '👀 只读查看'}</span>
             <span className="pill status">{editUnlocked ? '编辑模式' : syncStatus}</span>
           </div>
@@ -243,7 +252,13 @@ export default function TripView({
           <Checklist state={state} editUnlocked={editUnlocked} mutate={mutate} />
           <DaysSection state={state} editUnlocked={editUnlocked} mutate={mutate} mutateNoSave={mutateNoSave} />
           <HotelsSection state={state} editUnlocked={editUnlocked} mutate={mutate} />
-          <TransportSection state={state} editUnlocked={editUnlocked} mutate={mutate} />
+          <CurrencySection state={state} homeCurrency={currentTrip.currency} mutate={mutate} />
+          <TransportSection
+            state={state}
+            editUnlocked={editUnlocked}
+            mutate={mutate}
+            homeCurrency={currentTrip.currency}
+          />
           <BudgetSection state={state} editUnlocked={editUnlocked} mutate={mutate} currency={currentTrip.currency} />
           <NotesSection state={state} editUnlocked={editUnlocked} mutate={mutate} />
         </main>

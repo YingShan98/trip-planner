@@ -5,6 +5,9 @@ export interface LinkItem {
 
 export type Intensity = 'light' | 'medium' | 'heavy';
 
+/** 'home' = trip's home currency (TripRow.currency); 'foreign' = TripState.foreignCurrency */
+export type CurrencyKey = 'home' | 'foreign';
+
 export interface Activity {
   t: string;
   x: string;
@@ -43,6 +46,8 @@ export interface TransportItem {
   type: string;
   description: string;
   price: string;
+  amount: number | string;
+  currency: CurrencyKey;
 }
 
 export interface BudgetItem {
@@ -50,6 +55,7 @@ export interface BudgetItem {
   unit: string;
   quantity: number | string;
   unitPrice: number | string;
+  currency: CurrencyKey;
   note: string;
 }
 
@@ -67,6 +73,10 @@ export interface TripState {
   budget: BudgetItem[];
   notes: NoteItem[];
   collapsed: Record<number, boolean>;
+  /** destination/foreign currency code, e.g. 'CNY'. Home currency lives on TripRow.currency */
+  foreignCurrency: string;
+  /** 1 unit of foreignCurrency = exchangeRate units of home currency, e.g. 1 CNY = 0.62 MYR */
+  exchangeRate: number | string;
 }
 
 export interface TripRow {

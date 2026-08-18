@@ -1,4 +1,5 @@
 import { defaultBudget } from '../../state';
+import { convertAmount, formatMoney, parseRate } from '../../lib/currency';
 import type { Mutate, TripState } from '../../types';
 
 export default function BudgetSection({
@@ -12,14 +13,28 @@ export default function BudgetSection({
   mutate: Mutate;
   currency: string;
 }) {
-  const sum = state.budget.reduce((a, x) => a + (Number(x.quantity) || 0) * (Number(x.unitPrice) || 0), 0);
+  const home = currency || 'MYR';
+  const foreign = state.foreignCurrency || '外币';
+  const rate = parseRate(state.exchangeRate);
+
+  let totalHome = 0;
+  let unconverted = 0;
+  for (const x of state.budget) {
+    const raw = (Number(x.quantity) || 0) * (Number(x.unitPrice) || 0);
+    const conv = convertAmount(raw, x.currency, rate);
+    if (conv.home !== null) totalHome += conv.home;
+    else unconverted++;
+  }
+  const totalForeign = rate !== null ? totalHome / rate : null;
 
   return (
     <section className="section">
       <div className="section-head">
         <h2>💰 预算</h2>
         <span className="muted">
-          {currency || 'MYR'} · 估算总额 {sum.toLocaleString()}
+          {home} · 估算总额 {formatMoney(totalHome, '')}
+          {totalForeign !== null ? ` ≈ ${formatMoney(totalForeign, foreign)}` : ''}
+          {unconverted > 0 ? ` · ${unconverted} 项未换算（请设置汇率）` : ''}
         </span>
       </div>
       <div style={{ overflow: 'auto' }}>
@@ -29,13 +44,17 @@ export default function BudgetSection({
               <th>分类</th>
               <th>数量</th>
               <th>单价</th>
+              <th>币种</th>
               <th>小计</th>
               <th>备注</th>
               <th></th>
             </tr>
           </thead>
           <tbody>
-            {state.budget.map((x, i) => (
+            {state.budget.map((x, i) => {
+              const raw = (Number(x.quantity) || 0) * (Number(x.unitPrice) || 0);
+              const conv = convertAmount(raw, x.currency, rate);
+              return (
               <tr key={i}>
                 <td>
                   <input
@@ -72,7 +91,35 @@ export default function BudgetSection({
                     }
                   />
                 </td>
-                <td>{((Number(x.quantity) || 0) * (Number(x.unitPrice) || 0)).toLocaleString()}</td>
+                <td>
+                  <select
+                    className="editable"
+                    value={x.currency}
+                    onChange={(e) =>
+                      mutate((d) => {
+                        d.budget[i].currency = e.target.value as 'home' | 'foreign';
+                      })
+                    }
+                  >
+                    <option value="home">{home}</option>
+                    <option value="foreign">{foreign}</option>
+                  </select>
+                </td>
+                <td>
+                  {conv.home !== null && conv.foreign !== null ? (
+                    <>
+                      {formatMoney(conv.home, home)}
+                      <br />
+                      <span className="muted">≈ {formatMoney(conv.foreign, foreign)}</span>
+                    </>
+                  ) : (
+                    <>
+                      {formatMoney(x.currency === 'home' ? conv.home : conv.foreign, x.currency === 'home' ? home : foreign)}
+                      <br />
+                      <span className="muted">设置汇率后换算</span>
+                    </>
+                  )}
+                </td>
                 <td>
                   <input
                     className="editable"
@@ -99,7 +146,8 @@ export default function BudgetSection({
                   )}
                 </td>
               </tr>
-            ))}
+              );
+            })}
           </tbody>
         </table>
       </div>

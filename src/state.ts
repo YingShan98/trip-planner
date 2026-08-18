@@ -11,6 +11,8 @@ export function blankState(): TripState {
     budget: [],
     notes: [],
     collapsed: {},
+    foreignCurrency: '',
+    exchangeRate: '',
   };
 }
 
@@ -27,11 +29,11 @@ export function defaultHotel(): Hotel {
 }
 
 export function defaultTransport(): TransportItem {
-  return { type: '', description: '', price: '' };
+  return { type: '', description: '', price: '', amount: '', currency: 'home' };
 }
 
 export function defaultBudget(): BudgetItem {
-  return { category: '', unit: '', quantity: 1, unitPrice: '', note: '' };
+  return { category: '', unit: '', quantity: 1, unitPrice: '', currency: 'home', note: '' };
 }
 
 export function templateState(): TripState {
@@ -67,10 +69,20 @@ export function templateState(): TripState {
         notes: '示例讨论备注',
       },
     ],
-    transport: [{ type: '示例：7 座商务车', description: '示例：机场接送 + 市内包车', price: '示例：¥600/天' }],
-    budget: [{ category: '示例：住宿', unit: '晚', quantity: 3, unitPrice: 300, note: '示例备注' }],
+    transport: [
+      {
+        type: '示例：7 座商务车',
+        description: '示例：机场接送 + 市内包车，每天',
+        price: '示例：每天',
+        amount: 600,
+        currency: 'foreign',
+      },
+    ],
+    budget: [{ category: '示例：住宿', unit: '晚', quantity: 3, unitPrice: 300, currency: 'home', note: '示例备注' }],
     notes: [{ author: '示例：小明', text: '示例留言内容', ts: '2027-01-01 12:00:00' }],
     collapsed: {},
+    foreignCurrency: 'CNY',
+    exchangeRate: 0.62,
   };
 }
 
@@ -92,9 +104,12 @@ export function normalize(s: unknown): TripState {
   x.hotels = Array.isArray(src.hotels)
     ? src.hotels.map((h) => ({ ...defaultHotel(), ...h, link: Array.isArray(h.link) ? h.link : [] }))
     : [];
-  x.transport = Array.isArray(src.transport) ? src.transport : [];
-  x.budget = Array.isArray(src.budget) ? src.budget : [];
+  x.transport = Array.isArray(src.transport) ? src.transport.map((t) => ({ ...defaultTransport(), ...t })) : [];
+  x.budget = Array.isArray(src.budget) ? src.budget.map((b) => ({ ...defaultBudget(), ...b })) : [];
   x.notes = Array.isArray(src.notes) ? src.notes : [];
   x.collapsed = src.collapsed || {};
+  x.foreignCurrency = typeof src.foreignCurrency === 'string' ? src.foreignCurrency : '';
+  x.exchangeRate =
+    typeof src.exchangeRate === 'number' || typeof src.exchangeRate === 'string' ? src.exchangeRate : '';
   return x;
 }
