@@ -31,11 +31,11 @@ export default function BudgetSection({
         </span>
       </div>
 
-      <div className="overflow-auto">
+      <div className="hidden sm:block overflow-auto">
         <table className="budget-table w-full border-separate border-spacing-0 bg-surface border border-line rounded-lg overflow-hidden shadow-xs">
           <thead>
             <tr>
-              {['分类', '数量', '单价', '币种', '小计', '备注', ''].map((h) => (
+              {['预算项目', '数量', '单价', '币种', '原币小计', `折合金额（${home}）`, '备注', ''].map((h) => (
                 <th key={h} className="bg-surface-3 text-muted text-[11.5px] font-bold uppercase tracking-[0.08em] px-3 py-[11px] text-left border-b border-line">
                   {h}
                 </th>
@@ -56,13 +56,8 @@ export default function BudgetSection({
                       <option value="home">{home}</option>
                       <option value="foreign">{foreign}</option>
                     </select>,
-                    <span className="text-[13px]">
-                      {conv.home !== null && conv.foreign !== null ? (
-                        <>{formatMoney(conv.home, home)}<br /><span className="text-muted text-[12px]">≈ {formatMoney(conv.foreign, foreign)}</span></>
-                      ) : (
-                        <>{formatMoney(x.currency === 'home' ? conv.home : conv.foreign, x.currency === 'home' ? home : foreign)}<br /><span className="text-muted text-[12px]">设置汇率后换算</span></>
-                      )}
-                    </span>,
+                    <span className="text-[13px] font-medium">{formatMoney(raw, x.currency === 'home' ? home : foreign)}</span>,
+                    <span className="text-[13px] font-medium text-jade-dark">{conv.home !== null ? formatMoney(conv.home, home) : '未换算'}</span>,
                     <input className="editable w-full border-none bg-transparent p-1 outline-none group-hover:bg-jade-light rounded transition-colors" value={x.note} onChange={(e) => mutate((d) => { d.budget[i].note = e.target.value; })} />,
                     editUnlocked ? <button className="btn-mini edit-only" onClick={() => mutate((d) => { d.budget.splice(i, 1); })}>×</button> : null,
                   ].map((cell, ci) => (
@@ -75,6 +70,66 @@ export default function BudgetSection({
             })}
           </tbody>
         </table>
+      </div>
+
+      <div className="sm:hidden flex flex-col gap-3">
+        {state.budget.length === 0 ? (
+          <div className="empty-state">还没有预算项目</div>
+        ) : state.budget.map((x, i) => {
+          const raw = (Number(x.quantity) || 0) * (Number(x.unitPrice) || 0);
+          const conv = convertAmount(raw, x.currency, rate);
+          return (
+            <article key={i} className="bg-surface border border-line rounded-lg p-4 shadow-xs">
+              <div className="flex items-start gap-3 mb-3.5">
+                <input
+                  aria-label={`预算项目 ${i + 1} 分类`}
+                  className="inp editable flex-1 min-w-0 font-bold text-[15px]"
+                  value={x.category}
+                  placeholder="预算分类"
+                  onChange={(e) => mutate((d) => { d.budget[i].category = e.target.value; })}
+                />
+                {editUnlocked && (
+                  <button aria-label={`删除预算项目 ${i + 1}`} className="btn-mini edit-only shrink-0" onClick={() => mutate((d) => { d.budget.splice(i, 1); })}>×</button>
+                )}
+              </div>
+
+              <div className="grid grid-cols-2 gap-2.5 mb-3">
+                <label className="field">
+                  <span className="text-[11px] font-semibold text-muted">数量</span>
+                  <input aria-label={`预算项目 ${i + 1} 数量`} className="inp editable" type="number" value={x.quantity} onChange={(e) => mutate((d) => { d.budget[i].quantity = e.target.value; })} />
+                </label>
+                <label className="field">
+                  <span className="text-[11px] font-semibold text-muted">单价</span>
+                  <input aria-label={`预算项目 ${i + 1} 单价`} className="inp editable" type="number" value={x.unitPrice} onChange={(e) => mutate((d) => { d.budget[i].unitPrice = e.target.value; })} />
+                </label>
+              </div>
+
+              <div className="flex items-end gap-2.5 mb-3.5">
+                <label className="field flex-1">
+                  <span className="text-[11px] font-semibold text-muted">币种</span>
+                  <select aria-label={`预算项目 ${i + 1} 币种`} className="inp editable" value={x.currency} onChange={(e) => mutate((d) => { d.budget[i].currency = e.target.value as 'home' | 'foreign'; })}>
+                    <option value="home">{home}</option>
+                    <option value="foreign">{foreign}</option>
+                  </select>
+                </label>
+                <div className="flex-1 min-w-0 rounded-sm bg-jade-light border border-jade-tint px-3 py-2">
+                  <span className="block text-[11px] font-semibold text-muted">折合金额（{home}）</span>
+                  <strong className="block text-[14px] text-jade-dark truncate">{conv.home !== null ? formatMoney(conv.home, home) : '未换算'}</strong>
+                </div>
+              </div>
+
+              <div className="flex items-center justify-between gap-3 mb-3 text-[12px]">
+                <span className="text-muted">原币小计</span>
+                <strong className="text-ink-2">{formatMoney(raw, x.currency === 'home' ? home : foreign)}</strong>
+              </div>
+
+              <label className="field">
+                <span className="text-[11px] font-semibold text-muted">备注</span>
+                <input aria-label={`预算项目 ${i + 1} 备注`} className="inp editable" value={x.note} placeholder="例如：每人、每天、含税" onChange={(e) => mutate((d) => { d.budget[i].note = e.target.value; })} />
+              </label>
+            </article>
+          );
+        })}
       </div>
 
       {editUnlocked && (

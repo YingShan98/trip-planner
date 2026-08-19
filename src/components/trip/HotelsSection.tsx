@@ -72,31 +72,34 @@ export default function HotelsSection({
 
               {/* Links */}
               <div className="pt-2 border-t border-dashed border-line">
-                {h.link.map((l, li) => (
-                  <div key={li} className="grid grid-cols-[1fr_1.6fr_auto] gap-1.5 mb-1.5 items-center">
-                    <input
-                      className="inp editable text-[12px]"
-                      value={l.label}
-                      placeholder="名称"
-                      onChange={(e) => mutate((d) => { d.hotels[i].link[li].label = e.target.value; })}
-                    />
-                    <input
-                      className="inp editable text-[12px]"
-                      value={l.url}
-                      placeholder="https://..."
-                      onChange={(e) => mutate((d) => { d.hotels[i].link[li].url = e.target.value; })}
-                    />
-                    <button
-                      className="btn-mini edit-only"
-                      onClick={() => mutate((d) => { d.hotels[i].link.splice(li, 1); })}
-                    >
-                      ×
-                    </button>
-                  </div>
-                ))}
-                {!editUnlocked && h.link.length > 0 && (
-                  <div className="flex flex-wrap gap-2 mt-1">
+                {editUnlocked ? (
+                  <>
                     {h.link.map((l, li) => (
+                      <div key={li} className="grid grid-cols-1 sm:grid-cols-[1fr_1.6fr_auto] gap-1.5 mb-1.5 items-center">
+                        <input
+                          className="inp editable text-[12px]"
+                          value={l.label}
+                          placeholder="名称"
+                          onChange={(e) => mutate((d) => { d.hotels[i].link[li].label = e.target.value; })}
+                        />
+                        <input
+                          className="inp editable text-[12px]"
+                          value={l.url}
+                          placeholder="https://..."
+                          onChange={(e) => mutate((d) => { d.hotels[i].link[li].url = e.target.value; })}
+                        />
+                        <button
+                          className="btn-mini edit-only"
+                          onClick={() => mutate((d) => { d.hotels[i].link.splice(li, 1); })}
+                        >
+                          ×
+                        </button>
+                      </div>
+                    ))}
+                  </>
+                ) : (
+                  <div className="flex flex-wrap gap-2 mt-1">
+                    {h.link.filter((l) => l.url.trim()).map((l, li) => (
                       <a
                         key={li}
                         href={l.url}
@@ -104,7 +107,7 @@ export default function HotelsSection({
                         rel="noopener noreferrer"
                         className="text-jade text-[12.5px] hover:underline"
                       >
-                        {l.label || l.url}
+                        ↗ {l.label || l.url}
                       </a>
                     ))}
                   </div>

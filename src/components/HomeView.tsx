@@ -61,20 +61,20 @@ export default function HomeView({
       <section className="relative overflow-hidden bg-gradient-to-br from-jade-dark via-jade to-jade-mid text-white content-gutter py-14 flex justify-between items-end gap-8">
         <div className="relative z-10">
           <div className="text-[11px] font-bold tracking-[0.14em] text-white/60 uppercase mb-3">
-            YOUR TRAVEL WORKSPACE
+            YOUR SHARED TRAVEL DESK
           </div>
           <h1 className="font-serif text-[34px] font-bold leading-[1.3] mb-3">
-            把旅行计划放在一起，<br />和同行的人一起完成。
+            把想去的地方，<br />慢慢安排成一段旅程。
           </h1>
           <p className="text-white/78 max-w-[560px] text-[15px] m-0">
-            公开查看、密码编辑、实时同步。一个项目可以管理所有未来旅行。
+            和同行的人一起整理行程、住宿、预算与出发准备。打开链接即可查看，输入密码即可共同编辑。
           </p>
         </div>
         <button
           className="btn-primary btn-lg shrink-0 bg-white/14 border-white/45 text-white hover:bg-white/24 hover:border-white/75 hover:shadow-md hover:-translate-y-0.5 relative z-10"
           onClick={onNewTrip}
         >
-          ＋ 创建第一趟旅行
+          ＋ 创建第一段旅程
         </button>
         {/* background radial highlight */}
         <div className="absolute inset-0 bg-[radial-gradient(circle_at_80%_20%,rgba(255,255,255,0.06)_0%,transparent_55%)]" />
@@ -83,17 +83,17 @@ export default function HomeView({
       {/* ── Trip list ── */}
       <section className="content-gutter py-7">
         <div className="flex justify-between items-center gap-2.5 pb-3.5 mb-4 border-b-2 border-line flex-wrap">
-          <h2 className="font-serif text-[19px] font-bold text-jade-dark">我的旅行</h2>
+          <h2 className="font-serif text-[19px] font-bold text-jade-dark">旅程收藏</h2>
           <div className="flex flex-wrap gap-2 items-center">
             <span className="text-muted text-[13px]">{trips.length} 个旅行</span>
-            <button className="btn-ghost" onClick={downloadTemplate}>⬇️ 下载模板</button>
-            <button className="btn-ghost" onClick={() => fileInputRef.current?.click()}>⬆️ 导入 JSON</button>
+            <button className="btn-ghost" onClick={downloadTemplate}>下载模板</button>
+            <button className="btn-ghost" onClick={() => fileInputRef.current?.click()}>导入 JSON</button>
             <input ref={fileInputRef} type="file" accept="application/json,.json" className="hidden" onChange={handleFileChange} />
           </div>
         </div>
 
         {trips.length === 0 ? (
-          <div className="empty-state">还没有旅行。<br />创建第一趟旅行吧。</div>
+          <div className="empty-state">还没有保存的旅程。<br />创建第一段旅程，和同行的人一起开始安排吧。</div>
         ) : (
           <div className="grid grid-cols-[repeat(auto-fill,minmax(280px,1fr))] gap-4">
             {trips.map((t) => (

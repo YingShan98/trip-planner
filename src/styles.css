@@ -5,11 +5,11 @@
    ═══════════════════════════════════════════════════════════ */
 @theme {
   /* Brand palette */
-  --color-jade:          #2a6b52;
-  --color-jade-dark:     #1a4a39;
-  --color-jade-mid:      #3a8166;
-  --color-jade-light:    #ebf6f0;
-  --color-jade-tint:     #d2e9dc;
+  --color-jade:          #24735b;
+  --color-jade-dark:     #123f36;
+  --color-jade-mid:      #3d9271;
+  --color-jade-light:    #e8f4ed;
+  --color-jade-tint:     #cfe7d8;
 
   /* Text */
   --color-ink:           #18271e;
@@ -17,14 +17,14 @@
   --color-muted:         #607570;
 
   /* Surfaces */
-  --color-bg:            #edf5f1;
+  --color-bg:            #f3f5ef;
   --color-surface:       #ffffff;
-  --color-surface-2:     #f4faf7;
-  --color-surface-3:     #e9f3ed;
+  --color-surface-2:     #fafbf7;
+  --color-surface-3:     #edf3ec;
 
   /* Borders */
-  --color-line:          #dbe8e2;
-  --color-line-strong:   #bfd3ca;
+  --color-line:          #dce5dc;
+  --color-line-strong:   #b9cdbf;
 
   /* Status */
   --color-danger:        #c13d2b;
@@ -33,6 +33,10 @@
   --color-gold:          #b5820a;
   --color-gold-tint:     #fdf5dc;
   --color-gold-line:     #f0da9a;
+  --color-sky-tint:      #e9f3f8;
+  --color-sky-line:      #bfdce9;
+  --color-sky:           #27677c;
+  --color-coral:         #c55b48;
 
   /* Radius (overrides Tailwind defaults) */
   --radius-xs:      5px;
@@ -51,8 +55,8 @@
   --shadow-jade:    0 4px 14px rgba(42,107,82,.30);
 
   /* Typography */
-  --font-sans:  "Inter", "Noto Sans SC", system-ui, -apple-system, sans-serif;
-  --font-serif: "Noto Serif SC", serif;
+  --font-sans:  "Avenir Next", "Noto Sans SC", "Segoe UI", sans-serif;
+  --font-serif: "Iowan Old Style", "Noto Serif SC", Georgia, serif;
 
   /* Motion */
   --ease-DEFAULT: cubic-bezier(.4, 0, .2, 1);
@@ -81,6 +85,8 @@
     font-size: 14.5px;
     line-height: 1.65;
     -webkit-font-smoothing: antialiased;
+    background-image: linear-gradient(135deg, rgba(255,255,255,.72), transparent 42%),
+      radial-gradient(circle at 88% 0%, rgba(207,231,216,.32), transparent 28rem);
   }
 
   button, input, select, textarea { font: inherit; }
@@ -89,6 +95,7 @@
   a       { color: var(--color-jade); text-decoration: none; }
   a:hover { text-decoration: underline; }
   h1, h2, h3 { margin: 0; }
+  :focus-visible { outline: 3px solid rgba(39,103,124,.34); outline-offset: 3px; }
   ::placeholder { color: #9db8af; }
 
   /* Custom checkbox checkmark */
@@ -188,6 +195,13 @@
     padding-left:  max(24px, calc((100vw - 1200px) / 2 + 24px));
     padding-right: max(24px, calc((100vw - 1200px) / 2 + 24px));
   }
+}
+
+@media (max-width: 720px) {
+  body { font-size: 14px; }
+  .page-gutter, .content-gutter { padding-left: 16px; padding-right: 16px; }
+  .btn-primary, .btn-ghost, .btn-danger { min-height: 42px; }
+  .btn-mini { min-height: 36px; }
 }
 
 /* ═══════════════════════════════════════════════════════════

@@ -160,17 +160,17 @@ export default function TripView({
   const done  = state.checklist.filter((x) => x.done).length;
 
   return (
-    <main className={`min-h-[calc(100vh-60px)] bg-bg${editUnlocked ? '' : ' readonly'}`}>
+    <main className={`min-h-[calc(100vh-68px)] bg-bg${editUnlocked ? '' : ' readonly'}`}>
 
       {/* ── Banners ── */}
       {editUnlocked && (
-        <div className="content-gutter py-2 bg-gold-tint border-b border-gold-line text-gold text-[13px] font-semibold flex items-center gap-2">
-          ✏️ 编辑模式已开启 — 修改将在 0.65 秒后自动保存
+        <div className="content-gutter py-2.5 bg-gold-tint border-b border-gold-line text-gold text-[13px] font-semibold flex items-center gap-2">
+          <span aria-hidden="true">✦</span> 编辑模式已开启 <span className="font-normal">· 修改会自动保存</span>
         </div>
       )}
       {readOnly && (
-        <div className="content-gutter py-2 bg-blue-50 border-b border-blue-200 text-blue-700 text-[13px] font-semibold flex items-center gap-2">
-          👁 只读分享模式 — 你正在查看一个共享的只读版本
+        <div className="content-gutter py-2.5 bg-sky-tint border-b border-sky-line text-sky text-[13px] font-semibold flex items-center gap-2">
+          <span aria-hidden="true">◌</span> 只读分享模式 <span className="font-normal">· 这是一个共享查看版本</span>
         </div>
       )}
 
@@ -179,13 +179,14 @@ export default function TripView({
         <div className="absolute inset-0 bg-[radial-gradient(circle_at_90%_10%,rgba(255,255,255,0.07)_0%,transparent_50%)]" />
         <div className="relative z-10">
           <button
-            className="btn mb-4 bg-white/10 border-white/22 text-white/88 text-[13px] px-3.5 py-1.5 hover:bg-white/18 hover:border-white/45 hover:text-white hover:-translate-x-0.5"
+            className="btn mb-5 bg-white/10 border-white/22 text-white/88 text-[13px] px-3.5 py-1.5 hover:bg-white/18 hover:border-white/45 hover:text-white hover:-translate-x-0.5"
             onClick={onHome}
           >
             ← 我的旅行
           </button>
 
-          <h1 className="font-serif text-[28px] font-bold mb-1.5 leading-[1.3]">{currentTrip.title}</h1>
+          <p className="text-white/60 text-[11px] font-bold tracking-[0.16em] uppercase mb-2">TRIP WORKSPACE</p>
+          <h1 className="font-serif text-[32px] font-bold mb-1.5 leading-[1.25]">{currentTrip.title}</h1>
           <p className="text-white/72 text-[14.5px] m-0">
             {currentTrip.destination || '目的地待定'} · {dateRange(currentTrip)}
           </p>
@@ -256,16 +257,29 @@ export default function TripView({
         </div>
       </header>
 
+      <nav aria-label="行程目录" className="sticky top-[68px] z-40 bg-surface/94 backdrop-blur-md border-b border-line shadow-xs overflow-x-auto">
+        <div className="max-w-[1200px] mx-auto px-6 flex items-center gap-1 min-w-max">
+          {[
+            ['overview', '概览'], ['prepare', '准备'], ['itinerary', '行程'],
+            ['stay', '住宿'], ['currency', '汇率'], ['transport', '交通'], ['budget', '预算'], ['notes', '讨论'],
+          ].map(([id, label]) => (
+            <a key={id} href={`#${id}`} className="px-3.5 py-3 text-[12.5px] font-semibold text-muted border-b-2 border-transparent hover:text-jade hover:border-jade no-underline transition-colors">
+              {label}
+            </a>
+          ))}
+        </div>
+      </nav>
+
       {/* ── Content ── */}
       <div className="max-w-[1200px] mx-auto px-6 pb-24">
-        <Dashboard state={state} description={currentTrip.description} total={total} done={done} />
-        <Checklist state={state} editUnlocked={editUnlocked} mutate={mutate} />
-        <DaysSection state={state} editUnlocked={editUnlocked} mutate={mutate} mutateNoSave={mutateNoSave} />
-        <HotelsSection state={state} editUnlocked={editUnlocked} mutate={mutate} />
-        <CurrencySection state={state} homeCurrency={currentTrip.currency} mutate={mutate} />
-        <TransportSection state={state} editUnlocked={editUnlocked} mutate={mutate} homeCurrency={currentTrip.currency} />
-        <BudgetSection state={state} editUnlocked={editUnlocked} mutate={mutate} currency={currentTrip.currency} />
-        <NotesSection state={state} editUnlocked={editUnlocked} mutate={mutate} />
+        <div id="overview" className="scroll-mt-32"><Dashboard state={state} description={currentTrip.description} total={total} done={done} /></div>
+        <div id="prepare" className="scroll-mt-32"><Checklist state={state} editUnlocked={editUnlocked} mutate={mutate} /></div>
+        <div id="itinerary" className="scroll-mt-32"><DaysSection state={state} editUnlocked={editUnlocked} mutate={mutate} mutateNoSave={mutateNoSave} /></div>
+        <div id="stay" className="scroll-mt-32"><HotelsSection state={state} editUnlocked={editUnlocked} mutate={mutate} /></div>
+        <div id="currency" className="scroll-mt-32"><CurrencySection state={state} homeCurrency={currentTrip.currency} mutate={mutate} /></div>
+        <div id="transport" className="scroll-mt-32"><TransportSection state={state} editUnlocked={editUnlocked} mutate={mutate} homeCurrency={currentTrip.currency} /></div>
+        <div id="budget" className="scroll-mt-32"><BudgetSection state={state} editUnlocked={editUnlocked} mutate={mutate} currency={currentTrip.currency} /></div>
+        <div id="notes" className="scroll-mt-32"><NotesSection state={state} editUnlocked={editUnlocked} mutate={mutate} /></div>
       </div>
 
       {/* ── FAB save ── */}

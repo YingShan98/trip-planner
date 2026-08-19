@@ -45,22 +45,22 @@ export default function App() {
   return (
     <div id="app">
       {/* ── Topbar ── */}
-      <header className="sticky top-0 z-50 flex justify-between items-center gap-3 page-gutter h-[60px] bg-white/95 backdrop-blur-md border-b border-line shadow-xs">
+      <header className="sticky top-0 z-50 flex justify-between items-center gap-3 page-gutter min-h-[68px] bg-white/92 backdrop-blur-md border-b border-line shadow-xs">
         <div className="flex items-center gap-2.5">
-          <div className="w-9 h-9 bg-gradient-to-br from-jade-dark to-jade rounded-sm grid place-items-center text-lg shrink-0 shadow-sm">
-            ✈️
+          <div className="w-10 h-10 bg-jade-dark rounded-sm grid place-items-center text-white text-[18px] shrink-0 shadow-sm" aria-hidden="true">
+            ↗
           </div>
           <div>
             <strong className="block text-[16px] font-bold font-serif text-jade-dark tracking-tight leading-none">
               Trip Planner
             </strong>
-            <small className="text-[11px] text-muted leading-none">多人协作旅行规划器</small>
+            <small className="text-[11px] text-muted leading-none">一起把旅程安排好</small>
           </div>
         </div>
 
         <div className="flex gap-2 items-center">
           <button className="btn-ghost hidden sm:inline-flex" onClick={goHome}>我的旅行</button>
-          <button className="btn-primary" onClick={handleNewTrip}>＋ 新建旅行</button>
+          <button className="btn-primary" onClick={handleNewTrip}>＋ 新建行程</button>
         </div>
       </header>
 

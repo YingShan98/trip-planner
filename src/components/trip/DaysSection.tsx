@@ -15,21 +15,31 @@ function LinkRows({ di, ai, links, editUnlocked, mutate }: {
 }) {
   return (
     <div className="mt-2.5 pt-2.5 border-t border-dashed border-line">
-      {links.map((l, li) => (
-        <div key={li} className="grid grid-cols-[1fr_1.6fr_auto] gap-1.5 mb-1.5 items-center">
-          <input className="inp editable" value={l.label} placeholder="链接名称"
-            onChange={(e) => mutate((d) => { d.days[di].items[ai].link[li].label = e.target.value; })} />
-          <input className="inp editable" value={l.url} placeholder="https://..."
-            onChange={(e) => mutate((d) => { d.days[di].items[ai].link[li].url = e.target.value; })} />
-          <button className="btn-mini edit-only"
-            onClick={() => mutate((d) => { d.days[di].items[ai].link.splice(li, 1); })}>×</button>
+      {editUnlocked ? (
+        <>
+          {links.map((l, li) => (
+            <div key={li} className="grid grid-cols-1 sm:grid-cols-[1fr_1.6fr_auto] gap-1.5 mb-1.5 items-center">
+              <input className="inp editable" value={l.label} placeholder="链接名称"
+                onChange={(e) => mutate((d) => { d.days[di].items[ai].link[li].label = e.target.value; })} />
+              <input className="inp editable" value={l.url} placeholder="https://..."
+                onChange={(e) => mutate((d) => { d.days[di].items[ai].link[li].url = e.target.value; })} />
+              <button className="btn-mini edit-only"
+                onClick={() => mutate((d) => { d.days[di].items[ai].link.splice(li, 1); })}>×</button>
+            </div>
+          ))}
+          <button className="btn-mini edit-only mt-1"
+            onClick={() => mutate((d) => { d.days[di].items[ai].link.push({ label: '链接', url: '' }); })}>
+            ＋ 添加链接
+          </button>
+        </>
+      ) : (
+        <div className="flex flex-wrap gap-x-4 gap-y-1.5">
+          {links.filter((l) => l.url.trim()).map((l, li) => (
+            <a key={li} href={l.url} target="_blank" rel="noopener noreferrer" className="text-jade text-[12.5px] hover:underline">
+              ↗ {l.label || l.url}
+            </a>
+          ))}
         </div>
-      ))}
-      {editUnlocked && (
-        <button className="btn-mini edit-only mt-1"
-          onClick={() => mutate((d) => { d.days[di].items[ai].link.push({ label: '链接', url: '' }); })}>
-          ＋ 添加链接
-        </button>
       )}
     </div>
   );
@@ -46,8 +56,8 @@ function ActivityRow({ a, di, ai, total, editUnlocked, mutate }: {
 
   return (
     <div className="bg-surface-2 border border-line rounded p-3 mb-2.5 transition-all duration-150 hover:border-line-strong hover:shadow-xs">
-      <div className="grid grid-cols-[100px_1fr_auto] gap-2 items-center mb-2">
-        <select className="inp editable"
+      <div className="grid grid-cols-1 sm:grid-cols-[100px_1fr_auto] gap-2 items-center mb-2">
+        <select className="inp editable sm:w-auto"
           value={a.t}
           onChange={(e) => mutate((d) => { d.days[di].items[ai].t = e.target.value; })}>
           {TIME_OPTIONS.map((x) => <option key={x}>{x}</option>)}
@@ -161,7 +171,7 @@ function DayCard({ d, i, total, collapsed, editUnlocked, mutate, mutateNoSave }:
       {!collapsed && (
         <div className="p-4">
           <div className="flex gap-2 flex-wrap mb-3.5">
-            <select className="inp editable w-auto" value={d.intensity}
+            <select className="inp editable w-full sm:w-auto" value={d.intensity}
               onChange={(e) => mutate((s) => { s.days[i].intensity = e.target.value as Intensity; })}>
               <option value="light">轻松</option>
               <option value="medium">中等</option>
