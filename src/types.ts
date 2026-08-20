@@ -98,6 +98,7 @@ export interface TripRow {
   end_date: string | null;
   currency: string;
   description: string;
+  edit_requires_password: boolean;
   data: unknown;
   updated_at: string;
   created_at: string;

@@ -20,11 +20,12 @@ export default function NewTripModal({
   const [slug, setSlug]       = useState('');
   const [edit, setEdit]       = useState('');
   const [desc, setDesc]       = useState(initialMeta?.description ?? '');
+  const [requiresPassword, setRequiresPassword] = useState(true);
 
   const createTrip = async () => {
     const cleanSlug = slug.trim().toLowerCase();
-    if (!cleanSlug || !title.trim() || edit.length < 4) {
-      toast('请填写名称、Slug 和至少4位编辑密码'); return;
+    if (!cleanSlug || !title.trim() || (requiresPassword && edit.length < 4)) {
+      toast(requiresPassword ? '请填写名称、Slug 和至少4位编辑密码' : '请填写名称和 Slug'); return;
     }
     if (!sb) return;
     const { data: row, error } = await sb.rpc('create_trip', {
@@ -32,6 +33,7 @@ export default function NewTripModal({
       p_destination: dest, p_start_date: start || null, p_end_date: end || null,
       p_currency: currency || 'MYR', p_description: desc,
       p_edit_password: edit, p_data: initialData ?? blankState(),
+      p_edit_requires_password: requiresPassword,
     });
     if (error) { toast(error.message); return; }
     onClose();
@@ -77,8 +79,14 @@ export default function NewTripModal({
           <input className="inp" placeholder="korea-trip-2027" value={slug} onChange={(e) => setSlug(e.target.value)} />
         </div>
         <div className="field col-span-2">
-          <label>同行者编辑密码</label>
-          <input className="inp" type="password" placeholder="至少4位" value={edit} onChange={(e) => setEdit(e.target.value)} />
+          <label>同行者编辑密码{requiresPassword ? '' : '（可选）'}</label>
+          <input className="inp" type="password" placeholder={requiresPassword ? '至少4位' : '无需密码时可留空'} value={edit} onChange={(e) => setEdit(e.target.value)} />
+        </div>
+        <div className="col-span-2 rounded-sm border border-gold-line bg-gold-tint px-3.5 py-3">
+          <label className="flex items-start gap-2.5 cursor-pointer select-none">
+            <input type="checkbox" className="mt-1 w-4 h-4 accent-jade-dark cursor-pointer" checked={!requiresPassword} onChange={(e) => setRequiresPassword(!e.target.checked)} />
+            <span className="text-[13.5px]"><strong>允许无需密码编辑</strong><span className="block text-[12px] text-gold mt-0.5">任何拿到链接的人都可以修改这趟旅程。之后可在旅行设置中更改，但需要系统管理密码。</span></span>
+          </label>
         </div>
         <div className="field col-span-2">
           <label>简介</label>

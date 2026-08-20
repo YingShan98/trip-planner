@@ -1,5 +1,6 @@
 import { defaultHotel } from '../../state';
 import type { Mutate, TripState } from '../../types';
+import MarkdownText from '../MarkdownText';
 
 export default function HotelsSection({
   state, editUnlocked, mutate,
@@ -22,12 +23,12 @@ export default function HotelsSection({
 
               {/* Row 1: rank badge + delete */}
               <div className="flex items-center justify-between gap-2">
-                <input
-                  className="inp editable w-[90px] text-[12px] shrink-0"
-                  value={h.rank}
-                  placeholder="排名 / 状态"
-                  onChange={(e) => mutate((d) => { d.hotels[i].rank = e.target.value; })}
-                />
+                {editUnlocked ? <input
+                    className="inp editable w-[90px] text-[12px] shrink-0"
+                    value={h.rank}
+                    placeholder="排名 / 状态"
+                    onChange={(e) => mutate((d) => { d.hotels[i].rank = e.target.value; })}
+                  /> : <span className="pill">{h.rank || '未排名'}</span>}
                 <button
                   className="btn-mini edit-only shrink-0"
                   onClick={() => mutate((d) => { d.hotels.splice(i, 1); })}
@@ -37,38 +38,25 @@ export default function HotelsSection({
               </div>
 
               {/* Row 2: hotel name — full width, prominent */}
-              <input
-                className="inp editable font-bold text-[15px]"
-                value={h.name}
-                placeholder="酒店名称"
-                onChange={(e) => mutate((d) => { d.hotels[i].name = e.target.value; })}
-              />
+              {editUnlocked ? <input
+                  className="inp editable font-bold text-[15px]"
+                  value={h.name}
+                  placeholder="酒店名称"
+                  onChange={(e) => mutate((d) => { d.hotels[i].name = e.target.value; })}
+                /> : <h3 className="font-serif font-bold text-[18px] text-jade-dark">{h.name}</h3>}
 
               {/* Row 3+: detail fields */}
-              <input
-                className="inp editable text-[13px]"
-                value={h.addr}
-                placeholder="📍 地址 / 地铁站 / 区域"
-                onChange={(e) => mutate((d) => { d.hotels[i].addr = e.target.value; })}
-              />
-              <input
-                className="inp editable text-[13px]"
-                value={h.warn}
-                placeholder="⚠️ 注意事项"
-                onChange={(e) => mutate((d) => { d.hotels[i].warn = e.target.value; })}
-              />
-              <textarea
-                className="inp editable min-h-[72px] resize-y text-[13px]"
-                value={h.pointsText}
-                placeholder="优点 / 缺点 / 适合原因"
-                onChange={(e) => mutate((d) => { d.hotels[i].pointsText = e.target.value; })}
-              />
-              <textarea
-                className="inp editable min-h-[52px] resize-y text-[13px]"
-                value={h.notes}
-                placeholder="讨论备注"
-                onChange={(e) => mutate((d) => { d.hotels[i].notes = e.target.value; })}
-              />
+              {editUnlocked ? <>
+                <input className="inp editable text-[13px]" value={h.addr} placeholder="地址 / 地铁站 / 区域" onChange={(e) => mutate((d) => { d.hotels[i].addr = e.target.value; })} />
+                <input className="inp editable text-[13px]" value={h.warn} placeholder="注意事项" onChange={(e) => mutate((d) => { d.hotels[i].warn = e.target.value; })} />
+                <textarea className="inp editable min-h-[72px] resize-y text-[13px]" value={h.pointsText} placeholder="优点 / 缺点 / 适合原因" onChange={(e) => mutate((d) => { d.hotels[i].pointsText = e.target.value; })} />
+                <textarea className="inp editable min-h-[52px] resize-y text-[13px]" value={h.notes} placeholder="讨论备注" onChange={(e) => mutate((d) => { d.hotels[i].notes = e.target.value; })} />
+              </> : <div className="flex flex-col gap-3">
+                {h.addr && <div className="rich-field"><span className="rich-label">位置</span><MarkdownText text={h.addr} /></div>}
+                {h.warn && <div className="rich-field warning-field"><span className="rich-label">注意事项</span><MarkdownText text={h.warn} /></div>}
+                {h.pointsText && <div className="rich-field"><span className="rich-label">选择理由</span><MarkdownText text={h.pointsText} /></div>}
+                {h.notes && <div className="rich-field"><span className="rich-label">备注</span><MarkdownText text={h.notes} /></div>}
+              </div>}
 
               {/* Links */}
               <div className="pt-2 border-t border-dashed border-line">

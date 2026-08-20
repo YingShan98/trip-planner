@@ -1,6 +1,7 @@
 import { defaultBudget } from '../../state';
 import { convertAmount, formatMoney, parseRate } from '../../lib/currency';
 import type { Mutate, TripState } from '../../types';
+import MarkdownText from '../MarkdownText';
 
 export default function BudgetSection({
   state, editUnlocked, mutate, currency,
@@ -58,7 +59,7 @@ export default function BudgetSection({
                     </select>,
                     <span className="text-[13px] font-medium">{formatMoney(raw, x.currency === 'home' ? home : foreign)}</span>,
                     <span className="text-[13px] font-medium text-jade-dark">{conv.home !== null ? formatMoney(conv.home, home) : '未换算'}</span>,
-                    <input className="editable w-full border-none bg-transparent p-1 outline-none group-hover:bg-jade-light rounded transition-colors" value={x.note} onChange={(e) => mutate((d) => { d.budget[i].note = e.target.value; })} />,
+                    editUnlocked ? <input className="editable w-full border-none bg-transparent p-1 outline-none group-hover:bg-jade-light rounded transition-colors" value={x.note} onChange={(e) => mutate((d) => { d.budget[i].note = e.target.value; })} /> : <MarkdownText text={x.note} className="budget-note" />,
                     editUnlocked ? <button className="btn-mini edit-only" onClick={() => mutate((d) => { d.budget.splice(i, 1); })}>×</button> : null,
                   ].map((cell, ci) => (
                     <td key={ci} className="px-3 py-2.5 border-b border-line align-middle text-[13.5px] last:border-r-0">
@@ -123,10 +124,14 @@ export default function BudgetSection({
                 <strong className="text-ink-2">{formatMoney(raw, x.currency === 'home' ? home : foreign)}</strong>
               </div>
 
-              <label className="field">
-                <span className="text-[11px] font-semibold text-muted">备注</span>
-                <input aria-label={`预算项目 ${i + 1} 备注`} className="inp editable" value={x.note} placeholder="例如：每人、每天、含税" onChange={(e) => mutate((d) => { d.budget[i].note = e.target.value; })} />
-              </label>
+              {editUnlocked ? (
+                <label className="field">
+                  <span className="text-[11px] font-semibold text-muted">备注</span>
+                  <input aria-label={`预算项目 ${i + 1} 备注`} className="inp editable" value={x.note} placeholder="例如：每人、每天、含税" onChange={(e) => mutate((d) => { d.budget[i].note = e.target.value; })} />
+                </label>
+              ) : x.note ? (
+                <div className="rich-field"><span className="rich-label">备注</span><MarkdownText text={x.note} /></div>
+              ) : null}
             </article>
           );
         })}

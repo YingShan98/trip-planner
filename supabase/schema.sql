@@ -14,9 +14,13 @@ create table if not exists public.trip_documents (
   currency text not null default 'MYR',
   description text not null default '',
   data jsonb not null default '{}'::jsonb,
+  edit_requires_password boolean not null default true,
   updated_at timestamptz not null default now(),
   created_at timestamptz not null default now()
 );
+
+alter table public.trip_documents
+  add column if not exists edit_requires_password boolean not null default true;
 
 create table if not exists public.trip_secrets (
   trip_id uuid primary key references public.trip_documents(id) on delete cascade,
@@ -96,14 +100,13 @@ as $$
 declare
   v_trip_id uuid;
   stored_hash text;
-  v_free_edit boolean;
+  v_requires_password boolean;
 begin
   select id into v_trip_id from public.trip_documents where slug = p_slug;
   if v_trip_id is null then return false; end if;
-  -- Allow saving without a password when free editing is enabled in the stored data.
-  select coalesce((data->>'freeEdit')::boolean, false) into v_free_edit
+  select edit_requires_password into v_requires_password
     from public.trip_documents where id = v_trip_id;
-  if not v_free_edit then
+  if v_requires_password then
     select edit_password_hash into stored_hash from public.trip_secrets where trip_id = v_trip_id;
     if stored_hash is distinct from public._hash_password(p_password) then return false; end if;
   end if;
@@ -122,7 +125,8 @@ create or replace function public.create_trip(
   p_currency text,
   p_description text,
   p_edit_password text,
-  p_data jsonb
+  p_data jsonb,
+  p_edit_requires_password boolean default true
 )
 returns public.trip_documents
 language plpgsql
@@ -137,12 +141,35 @@ begin
   if admin_hash is distinct from public._hash_password(p_admin_password) then
     raise exception 'Invalid admin password';
   end if;
-  if length(trim(p_edit_password)) < 4 then raise exception 'Edit password must be at least 4 characters'; end if;
-  insert into public.trip_documents(slug,title,destination,start_date,end_date,currency,description,data)
-  values(lower(trim(p_slug)),trim(p_title),coalesce(trim(p_destination),''),p_start_date,p_end_date,coalesce(nullif(trim(p_currency),''),'MYR'),coalesce(p_description,''),coalesce(p_data,'{}'::jsonb))
+  if coalesce(p_edit_requires_password, true) and length(trim(p_edit_password)) < 4 then
+    raise exception 'Edit password must be at least 4 characters';
+  end if;
+  insert into public.trip_documents(slug,title,destination,start_date,end_date,currency,description,data,edit_requires_password)
+  values(lower(trim(p_slug)),trim(p_title),coalesce(trim(p_destination),''),p_start_date,p_end_date,coalesce(nullif(trim(p_currency),''),'MYR'),coalesce(p_description,''),coalesce(p_data,'{}'::jsonb),coalesce(p_edit_requires_password,true))
   returning * into new_trip;
   insert into public.trip_secrets(trip_id, edit_password_hash) values(new_trip.id, public._hash_password(p_edit_password));
   return new_trip;
+end;
+$$;
+
+create or replace function public.set_trip_edit_requirement(p_admin_password text, p_slug text, p_requires_password boolean)
+returns boolean
+language plpgsql
+security definer
+set search_path = public, extensions
+as $$
+declare
+  admin_hash text;
+  v_trip_id uuid;
+begin
+  select value into admin_hash from public.app_settings where key='admin_password_hash';
+  if admin_hash is distinct from public._hash_password(p_admin_password) then return false; end if;
+  select id into v_trip_id from public.trip_documents where slug = p_slug;
+  if v_trip_id is null then return false; end if;
+  update public.trip_documents
+  set edit_requires_password = coalesce(p_requires_password, true), updated_at = now()
+  where id = v_trip_id;
+  return true;
 end;
 $$;
 
@@ -156,12 +183,15 @@ language plpgsql
 security definer
 set search_path = public, extensions
 as $$
-declare v_trip_id uuid; stored_hash text;
+declare v_trip_id uuid; stored_hash text; v_requires_password boolean;
 begin
   select id into v_trip_id from public.trip_documents where slug=p_slug;
   if v_trip_id is null then return false; end if;
-  select edit_password_hash into stored_hash from public.trip_secrets where trip_id=v_trip_id;
-  if stored_hash is distinct from public._hash_password(p_password) then return false; end if;
+  select edit_requires_password into v_requires_password from public.trip_documents where id=v_trip_id;
+  if coalesce(v_requires_password, true) then
+    select edit_password_hash into stored_hash from public.trip_secrets where trip_id=v_trip_id;
+    if stored_hash is distinct from public._hash_password(p_password) then return false; end if;
+  end if;
   update public.trip_documents
   set title=trim(p_title), destination=coalesce(trim(p_destination),''), start_date=p_start_date,
       end_date=p_end_date, currency=coalesce(nullif(trim(p_currency),''),'MYR'),
@@ -211,16 +241,18 @@ $$;
 revoke all on function public._hash_password(text) from public;
 revoke all on function public.verify_trip_password(text,text) from public;
 revoke all on function public.save_trip(text,text,jsonb) from public;
-revoke all on function public.create_trip(text,text,text,text,date,date,text,text,text,jsonb) from public;
+revoke all on function public.create_trip(text,text,text,text,date,date,text,text,text,jsonb,boolean) from public;
 revoke all on function public.update_trip_meta(text,text,text,text,date,date,text,text) from public;
 revoke all on function public.change_trip_password(text,text,text) from public;
+revoke all on function public.set_trip_edit_requirement(text,text,boolean) from public;
 revoke all on function public.delete_trip(text,text) from public;
 
 grant execute on function public.verify_trip_password(text,text) to anon, authenticated;
 grant execute on function public.save_trip(text,text,jsonb) to anon, authenticated;
-grant execute on function public.create_trip(text,text,text,text,date,date,text,text,text,jsonb) to anon, authenticated;
+grant execute on function public.create_trip(text,text,text,text,date,date,text,text,text,jsonb,boolean) to anon, authenticated;
 grant execute on function public.update_trip_meta(text,text,text,text,date,date,text,text) to anon, authenticated;
 grant execute on function public.change_trip_password(text,text,text) to anon, authenticated;
+grant execute on function public.set_trip_edit_requirement(text,text,boolean) to anon, authenticated;
 grant execute on function public.delete_trip(text,text) to anon, authenticated;
 
 -- Enable Realtime for trip documents.

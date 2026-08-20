@@ -56,8 +56,9 @@ export default function TripView({
       const { data, error } = await sb.from('trip_documents').select('*').eq('slug', slug).single();
       if (cancelled) return;
       if (error) { toast('无法打开旅行：' + error.message); return; }
-      setCurrentTrip(data as TripRow);
-      setState(normalize((data as TripRow).data));
+      const row = data as TripRow;
+      setCurrentTrip(row);
+      setState({ ...normalize(row.data), freeEdit: row.edit_requires_password === false });
       setEditUnlocked(false);
       editPasswordRef.current = '';
       setSyncStatus('在线同步中');
@@ -76,7 +77,7 @@ export default function TripView({
         if (editUnlockedRef.current && saveInFlightRef.current) return;
         const row = payload.new as TripRow;
         setCurrentTrip(row);
-        setState(normalize(row.data));
+        setState({ ...normalize(row.data), freeEdit: row.edit_requires_password === false });
         toast('🔄 行程已更新');
       })
       .subscribe();
@@ -298,6 +299,7 @@ export default function TripView({
           state={state} mutate={mutate}
           onClose={() => setShowSettings(false)}
           onSaved={(meta) => setCurrentTrip((prev) => (prev ? { ...prev, ...meta } : prev))}
+          onPermissionChanged={(requiresPassword) => setState((prev) => (prev ? { ...prev, freeEdit: !requiresPassword } : prev))}
           onChangePassword={() => { setShowSettings(false); setShowChangePw(true); }}
         />
       )}

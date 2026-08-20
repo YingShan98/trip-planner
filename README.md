@@ -135,3 +135,33 @@ seed/guangzhou-family-trip-2027.json
 这是“家庭/朋友协作”级别的共享系统，而不是企业级账号系统。编辑密码通过数据库端 SHA-256 哈希校验；匿名客户端不能直接 UPDATE 数据表，只能调用数据库 RPC。
 
 如果以后需要更强的安全性，可以升级到 Supabase Auth + magic link / email login。
+
+## v2 数据库（全新规范化结构）
+
+`supabase/schema-v2.sql` 是新的规范化数据库结构，将行程、Day、活动、链接、住宿、交通、预算、Checklist、打包清单和留言拆成独立表。当前 React 界面仍使用旧版 `trip_documents` JSONB 结构；执行 v2 初始化后，需要后续前端迁移才能使用 v2 表。
+
+### 在现有 Supabase 项目中重置并导入示例
+
+1. 在 Supabase Dashboard → SQL Editor 执行 `supabase/reset-v2.sql`。这只删除 v2 表，不删除现有 v1 的 `trip_documents` 数据。
+2. 执行 `supabase/schema-v2.sql`。
+3. 在本机 `.env` 中临时加入 `SUPABASE_SERVICE_ROLE_KEY`。这个 key 只能用于本地脚本，绝对不要放入 Vite 的 `VITE_*` 变量、前端代码或 Git。
+4. 可选地设置 `SUPABASE_SEED_OWNER_ID` 为 Supabase Auth 用户 UUID。
+5. 执行：
+
+```bash
+npm run seed:v2
+```
+
+也可以导入其他 JSON 文件：
+
+```bash
+npm run seed:v2 -- seed/another-trip.json
+```
+
+脚本会按 Slug 删除已有的同名 v2 行程，再重新插入完整数据。默认 Slug 来自文件名，也可以用 `SUPABASE_SEED_SLUG` 覆盖。
+
+> `supabase/reset-all.sql` 会同时删除 v1 和 v2 表。当前 React 界面仍依赖 v1，因此在前端迁移完成前不要执行它；迁移完成后才用它进行真正的全新数据库重置。
+
+### Supabase Auth 免费层
+
+截至 2026 年 8 月，Supabase Free 计划包含 50,000 MAU、匿名登录、OAuth、50 万 MB 数据库容量、1 GB Storage、5 GB egress、2 百万 Realtime 消息和 200 个并发连接。这个家庭旅行应用目前可以使用免费层；需要留意 Free 项目闲置一周后可能暂停，且每个组织最多 2 个活跃 Free 项目。价格和配额以 [Supabase Pricing](https://supabase.com/pricing) 为准。

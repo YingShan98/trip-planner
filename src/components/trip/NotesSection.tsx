@@ -1,4 +1,5 @@
 import type { Mutate, TripState } from '../../types';
+import MarkdownText from '../MarkdownText';
 
 export default function NotesSection({
   state, editUnlocked, mutate,
@@ -33,12 +34,12 @@ export default function NotesSection({
               className="bg-surface border border-line border-l-[3px] border-l-jade rounded-lg px-4 py-3.5 shadow-xs transition-shadow duration-150 hover:shadow-sm"
             >
               <div className="flex gap-2.5 items-center mb-2.5 pb-2.5 border-b border-line">
-                <input
-                  className="inp-bare editable font-bold text-[14px] text-jade-dark flex-1"
-                  value={n.author}
-                  placeholder="姓名"
-                  onChange={(e) => mutate((d) => { d.notes[i].author = e.target.value; })}
-                />
+                {editUnlocked ? <input
+                    className="inp-bare editable font-bold text-[14px] text-jade-dark flex-1"
+                    value={n.author}
+                    placeholder="姓名"
+                    onChange={(e) => mutate((d) => { d.notes[i].author = e.target.value; })}
+                  /> : <strong className="text-[14px] text-jade-dark flex-1">{n.author || '同行者'}</strong>}
                 <span className="text-muted text-[12px]">{n.ts || ''}</span>
                 <button
                   className="btn-mini edit-only"
@@ -47,12 +48,12 @@ export default function NotesSection({
                   ×
                 </button>
               </div>
-              <textarea
-                className="editable w-full border-none bg-transparent resize-y min-h-[52px] p-0 outline-none text-ink leading-[1.65]"
-                value={n.text}
-                placeholder="留言"
-                onChange={(e) => mutate((d) => { d.notes[i].text = e.target.value; })}
-              />
+              {editUnlocked ? <textarea
+                  className="editable w-full border-none bg-transparent resize-y min-h-[52px] p-0 outline-none text-ink leading-[1.65]"
+                  value={n.text}
+                  placeholder="留言"
+                  onChange={(e) => mutate((d) => { d.notes[i].text = e.target.value; })}
+                /> : <MarkdownText text={n.text} className="note-copy" />}
             </article>
           ))
         )}

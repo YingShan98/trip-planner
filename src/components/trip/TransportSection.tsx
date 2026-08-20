@@ -1,6 +1,7 @@
 import { defaultTransport } from '../../state';
 import { convertAmount, formatMoney, parseRate } from '../../lib/currency';
 import type { Mutate, TripState } from '../../types';
+import MarkdownText from '../MarkdownText';
 
 export default function TransportSection({
   state, editUnlocked, mutate, homeCurrency,
@@ -27,12 +28,12 @@ export default function TransportSection({
 
               {/* Row 1: type name + delete */}
               <div className="flex items-start gap-2">
-                <input
-                  className="inp editable flex-1 font-bold text-[15px]"
-                  value={x.type}
-                  placeholder="交通方式 / 车型"
-                  onChange={(e) => mutate((d) => { d.transport[i].type = e.target.value; })}
-                />
+                {editUnlocked ? <input
+                    className="inp editable flex-1 font-bold text-[15px]"
+                    value={x.type}
+                    placeholder="交通方式 / 车型"
+                    onChange={(e) => mutate((d) => { d.transport[i].type = e.target.value; })}
+                  /> : <h3 className="font-serif font-bold text-[17px] text-jade-dark">{x.type}</h3>}
                 <button
                   className="btn-mini edit-only shrink-0 mt-0.5"
                   onClick={() => mutate((d) => { d.transport.splice(i, 1); })}
@@ -42,20 +43,20 @@ export default function TransportSection({
               </div>
 
               {/* Description */}
-              <textarea
-                className="inp editable min-h-[56px] resize-y text-[13px]"
-                value={x.description}
-                placeholder="说明（路线、时间、安排等）"
-                onChange={(e) => mutate((d) => { d.transport[i].description = e.target.value; })}
-              />
+              {editUnlocked ? <textarea
+                  className="inp editable min-h-[56px] resize-y text-[13px]"
+                  value={x.description}
+                  placeholder="说明（路线、时间、安排等）"
+                  onChange={(e) => mutate((d) => { d.transport[i].description = e.target.value; })}
+                /> : <MarkdownText text={x.description} className="rich-field" />}
 
               {/* Price label */}
-              <input
-                className="inp editable text-[13px]"
-                value={x.price}
-                placeholder="价格说明，如 / 天、/ 人"
-                onChange={(e) => mutate((d) => { d.transport[i].price = e.target.value; })}
-              />
+              {editUnlocked ? <input
+                  className="inp editable text-[13px]"
+                  value={x.price}
+                  placeholder="价格说明，如 / 天、/ 人"
+                  onChange={(e) => mutate((d) => { d.transport[i].price = e.target.value; })}
+                /> : x.price && <div className="rich-field"><span className="rich-label">计价方式</span><MarkdownText text={x.price} /></div>}
 
               {/* Amount + currency row */}
               <div className="flex gap-1.5">
@@ -80,10 +81,10 @@ export default function TransportSection({
               {x.amount !== '' && x.amount !== null && !Number.isNaN(Number(x.amount)) && (() => {
                 const conv = convertAmount(Number(x.amount), x.currency, rate);
                 return (
-                  <p className="text-muted text-[12.5px]">
+                  <p className="text-muted text-[12.5px] border-t border-line pt-2">
                     {conv.home !== null && conv.foreign !== null
                       ? `≈ ${formatMoney(conv.home, home)} / ${formatMoney(conv.foreign, foreign)}`
-                      : `${formatMoney(x.currency === 'home' ? conv.home : conv.foreign, x.currency === 'home' ? home : foreign)} · 设置汇率后换算`}
+                      : `${formatMoney(x.currency === 'home' ? conv.home : conv.foreign, x.currency === 'home' ? home : foreign)} · 未换算`}
                   </p>
                 );
               })()}

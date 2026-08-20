@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { defaultActivity, defaultDay } from '../../state';
 import type { Activity, Day, Intensity, Mutate, TripState } from '../../types';
+import MarkdownText from '../MarkdownText';
 
 const TIME_OPTIONS = ['清晨', '上午', '午间', '下午', '傍晚', '晚间', '全天'];
 const intensityLabel = (i: Intensity) => i === 'light' ? '轻松' : i === 'medium' ? '中等' : '较累';
@@ -57,13 +58,17 @@ function ActivityRow({ a, di, ai, total, editUnlocked, mutate }: {
   return (
     <div className="bg-surface-2 border border-line rounded p-3 mb-2.5 transition-all duration-150 hover:border-line-strong hover:shadow-xs">
       <div className="grid grid-cols-1 sm:grid-cols-[100px_1fr_auto] gap-2 items-center mb-2">
-        <select className="inp editable sm:w-auto"
-          value={a.t}
-          onChange={(e) => mutate((d) => { d.days[di].items[ai].t = e.target.value; })}>
-          {TIME_OPTIONS.map((x) => <option key={x}>{x}</option>)}
-        </select>
-        <input className="inp editable" value={a.x} placeholder="行程内容"
-          onChange={(e) => mutate((d) => { d.days[di].items[ai].x = e.target.value; })} />
+        {editUnlocked ? (
+          <select className="inp editable sm:w-auto"
+            value={a.t}
+            onChange={(e) => mutate((d) => { d.days[di].items[ai].t = e.target.value; })}>
+            {TIME_OPTIONS.map((x) => <option key={x}>{x}</option>)}
+          </select>
+        ) : <span className="pill justify-center">{a.t || '时间待定'}</span>}
+        {editUnlocked ? (
+          <input className="inp editable" value={a.x} placeholder="行程内容"
+            onChange={(e) => mutate((d) => { d.days[di].items[ai].x = e.target.value; })} />
+        ) : <MarkdownText text={a.x} className="activity-title" />}
         {editUnlocked && (
           <div className="flex gap-1">
             <button className="btn-mini edit-only" disabled={ai === 0} onClick={() => moveActivity(-1)}>↑</button>
@@ -73,11 +78,19 @@ function ActivityRow({ a, di, ai, total, editUnlocked, mutate }: {
           </div>
         )}
       </div>
-      <div className="grid grid-cols-2 gap-2">
-        <input className="inp editable" value={a.move} placeholder="🚗 交通"
-          onChange={(e) => mutate((d) => { d.days[di].items[ai].move = e.target.value; })} />
-        <input className="inp editable" value={a.fee} placeholder="💰 费用"
-          onChange={(e) => mutate((d) => { d.days[di].items[ai].fee = e.target.value; })} />
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+        {editUnlocked ? (
+          <input className="inp editable" value={a.move} placeholder="交通"
+            onChange={(e) => mutate((d) => { d.days[di].items[ai].move = e.target.value; })} />
+        ) : a.move ? (
+          <div className="rich-field"><span className="rich-label">交通</span><MarkdownText text={a.move} /></div>
+        ) : null}
+        {editUnlocked ? (
+          <input className="inp editable" value={a.fee} placeholder="费用"
+            onChange={(e) => mutate((d) => { d.days[di].items[ai].fee = e.target.value; })} />
+        ) : a.fee ? (
+          <div className="rich-field"><span className="rich-label">费用</span><MarkdownText text={a.fee} /></div>
+        ) : null}
       </div>
       <LinkRows di={di} ai={ai} links={a.link} editUnlocked={editUnlocked} mutate={mutate} />
     </div>
@@ -106,11 +119,13 @@ function DayCard({ d, i, total, collapsed, editUnlocked, mutate, mutateNoSave }:
         <span className="bg-jade-dark text-white rounded-[5px] px-2.5 py-1 font-bold text-[11.5px] tracking-[0.06em] shrink-0">
           D{i + 1}
         </span>
-        <input
-          className="inp-bare editable flex-1 min-w-[140px] font-bold text-[15px] font-serif py-1"
-          value={d.title}
-          onChange={(e) => mutate((s) => { s.days[i].title = e.target.value; })}
-        />
+        {editUnlocked ? (
+          <input
+            className="inp-bare editable flex-1 min-w-[140px] font-bold text-[15px] font-serif py-1"
+            value={d.title}
+            onChange={(e) => mutate((s) => { s.days[i].title = e.target.value; })}
+          />
+        ) : <h3 className="flex-1 min-w-[140px] font-bold text-[15px] font-serif py-1">{d.title}</h3>}
         <span className={`pill border ${intensityClass(d.intensity)}`}>{intensityLabel(d.intensity)}</span>
         <div className="flex gap-1.5 ml-auto">
           {d.mapUrl && (
@@ -171,20 +186,26 @@ function DayCard({ d, i, total, collapsed, editUnlocked, mutate, mutateNoSave }:
       {!collapsed && (
         <div className="p-4">
           <div className="flex gap-2 flex-wrap mb-3.5">
-            <select className="inp editable w-full sm:w-auto" value={d.intensity}
-              onChange={(e) => mutate((s) => { s.days[i].intensity = e.target.value as Intensity; })}>
-              <option value="light">轻松</option>
-              <option value="medium">中等</option>
-              <option value="heavy">较累</option>
-            </select>
-            <input className="inp editable flex-1 min-w-[180px]" value={d.steps} placeholder="步行时长/体力提示"
-              onChange={(e) => mutate((s) => { s.days[i].steps = e.target.value; })} />
-            <input
-              className="inp editable flex-1 min-w-[180px]"
-              value={d.mapUrl}
-              placeholder="地图嵌入链接（Google Maps → 分享 → 嵌入地图 → 复制 src URL）"
-              onChange={(e) => mutate((s) => { s.days[i].mapUrl = e.target.value; })}
-            />
+            {editUnlocked ? (
+              <select className="inp editable w-full sm:w-auto" value={d.intensity}
+                onChange={(e) => mutate((s) => { s.days[i].intensity = e.target.value as Intensity; })}>
+                <option value="light">轻松</option>
+                <option value="medium">中等</option>
+                <option value="heavy">较累</option>
+              </select>
+            ) : <span className={`pill border ${intensityClass(d.intensity)}`}>体力：{intensityLabel(d.intensity)}</span>}
+            {editUnlocked ? (
+              <input className="inp editable flex-1 min-w-[180px]" value={d.steps} placeholder="步行时长/体力提示"
+                onChange={(e) => mutate((s) => { s.days[i].steps = e.target.value; })} />
+            ) : d.steps ? <div className="rich-field flex-1 min-w-[180px]"><span className="rich-label">步行提示</span><MarkdownText text={d.steps} /></div> : null}
+            {editUnlocked ? (
+              <input
+                className="inp editable flex-1 min-w-[180px]"
+                value={d.mapUrl}
+                placeholder="地图嵌入链接（Google Maps → 分享 → 嵌入地图 → 复制 src URL）"
+                onChange={(e) => mutate((s) => { s.days[i].mapUrl = e.target.value; })}
+              />
+            ) : null}
           </div>
 
           {d.items.map((a, j) => (
@@ -199,12 +220,16 @@ function DayCard({ d, i, total, collapsed, editUnlocked, mutate, mutateNoSave }:
           )}
 
           <label className="block text-muted text-[12px] font-semibold mt-3 mb-1.5">Day 备注</label>
-          <textarea
-            className="inp editable w-full min-h-[60px] resize-y"
-            value={d.notes || ''}
-            placeholder="当天注意事项、老人休息安排、备选方案等"
-            onChange={(e) => mutate((s) => { s.days[i].notes = e.target.value; })}
-          />
+          {editUnlocked ? (
+            <textarea
+              className="inp editable w-full min-h-[60px] resize-y"
+              value={d.notes || ''}
+              placeholder="当天注意事项、老人休息安排、备选方案等"
+              onChange={(e) => mutate((s) => { s.days[i].notes = e.target.value; })}
+            />
+          ) : d.notes ? (
+            <div className="rich-field mt-2"><span className="rich-label">当天备注</span><MarkdownText text={d.notes} /></div>
+          ) : null}
         </div>
       )}
     </article>
