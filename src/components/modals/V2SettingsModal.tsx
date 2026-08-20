@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { sb } from '../../lib/supabase';
 import { toast } from '../../lib/toast';
-import type { V2TripMeta } from '../../lib/v2Trip';
+import { revokeV2Shares, type V2TripMeta } from '../../lib/v2Trip';
 import Modal from '../Modal';
 
 export default function V2SettingsModal({ trip, onClose, onSaved }: {
@@ -17,6 +17,7 @@ export default function V2SettingsModal({ trip, onClose, onSaved }: {
   const [start, setStart] = useState(trip.start_date || '');
   const [end, setEnd] = useState(trip.end_date || '');
   const [description, setDescription] = useState(trip.description);
+  const [revoking, setRevoking] = useState(false);
 
   const save = async () => {
     if (!sb) return;
@@ -29,6 +30,14 @@ export default function V2SettingsModal({ trip, onClose, onSaved }: {
     onSaved({ title: title.trim(), destination: destination.trim(), home_currency: currency.trim() || 'MYR', foreign_currency: foreignCurrency.trim(), exchange_rate: exchangeRate === '' ? null : Number(exchangeRate), start_date: start || null, end_date: end || null, description });
     toast('旅行设置已更新');
     onClose();
+  };
+
+  const revokeShares = async () => {
+    if (!confirm('撤销这趟旅行的所有安全分享链接？已复制的链接将立即失效。')) return;
+    setRevoking(true);
+    try { const count = await revokeV2Shares(trip.id); toast(count ? `已撤销 ${count} 个分享链接` : '没有需要撤销的分享链接'); }
+    catch (error) { toast('撤销失败：' + (error as Error).message); }
+    finally { setRevoking(false); }
   };
 
   return (
@@ -45,6 +54,10 @@ export default function V2SettingsModal({ trip, onClose, onSaved }: {
         <div className="field col-span-2"><label>简介</label><textarea className="inp min-h-[100px] resize-y" value={description} onChange={(e) => setDescription(e.target.value)} /></div>
       </div>
       <div className="flex justify-end mt-5 pt-4 border-t border-line"><button className="btn-primary" onClick={save}>保存设置</button></div>
+      <div className="mt-4 pt-4 border-t border-line">
+        <p className="text-[12px] font-semibold text-muted mb-2">安全分享</p>
+        <button className="btn-danger" disabled={revoking} onClick={revokeShares}>{revoking ? '撤销中…' : '撤销所有分享链接'}</button>
+      </div>
     </Modal>
   );
 }

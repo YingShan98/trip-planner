@@ -1,14 +1,15 @@
 # Trip Planner — 通用多人协作旅行规划器
 
-一个 **mobile-first、无需账号即可查看、密码编辑、Supabase Realtime 实时同步** 的旅行规划器。
+一个 **mobile-first、Supabase Auth、角色协作、可撤销安全分享、Realtime 同步** 的旅行规划器。
 
 适合家庭、朋友、多人旅行团共同规划。一个 Supabase 项目可以保存很多旅行：广州、韩国、日本、欧洲……都可以复用。
 
 ## 功能
 
 - 多旅行管理：创建、复制、删除、打开不同旅行
-- 公开查看：拿到链接即可查看，不需要登录
-- 密码编辑：每个旅行拥有独立编辑密码
+- 公开查看：公开旅行无需登录即可查看
+- Auth 协作：拥有者、编辑者、查看者角色
+- 安全分享：随机 token、哈希存储、可撤销、可过期的只读链接
 - 实时同步：Supabase Realtime 推送其他人的修改
 - 行程：任意天数、添加/删除/上下移动 Day、添加/删除活动
 - 活动：时间、内容、交通、费用、地图、链接、备注
@@ -36,18 +37,21 @@
 
 打开 Supabase Dashboard → SQL Editor → New query。
 
-把 `supabase/schema.sql` 的全部内容粘贴进去执行。
+把下面文件的全部内容粘贴到 Supabase SQL Editor 执行：
 
-脚本会创建：
+```text
+supabase/schema.sql
+```
 
-- `trip_documents`：公开可读的旅行数据
-- `trip_secrets`：私有编辑密码哈希
-- `app_settings`：私有系统设置
-- RLS policies
-- 创建/验证/保存/删除/改密码等安全 RPC
+如果是已有项目并要彻底清空旧 v1/v2 数据，先执行 `supabase/reset-fresh.sql`，再执行 `supabase/schema.sql`。这个操作不可恢复。
+
+这些脚本会创建：
+
+- `trips`、`trip_days`、`activities` 等规范化表
+- `trip_members`：拥有者、编辑者、查看者
+- `trip_shares`：哈希 token 分享链接
+- RLS policies 和事务保存 RPC
 - Realtime publication
-
-> SQL 文件里的 `CHANGE_ME_ADMIN_PASSWORD` 是你自己设置的“旅行管理密码”。不要把它写进前端代码。
 
 ## 3. 配置前端
 
@@ -110,15 +114,7 @@ https://你的用户名.github.io/trip-planner/?trip=guangzhou-family-trip-2027
 
 ## 6. 创建旅行
 
-首页点击「＋ 新建旅行」。系统会要求输入系统管理密码（SQL 中设置的 admin password）。
-
-创建后，为该旅行设置独立编辑密码。
-
-### 建议
-
-- Admin password：只自己知道，用于创建/删除/管理旅行
-- Trip edit password：分享给同行亲友，用于编辑某一趟旅行
-- 查看者：无需任何密码
+先使用 Supabase Auth 注册或登录，再点击「＋ 新建行程」。创建者自动成为旅行拥有者。
 
 ## 7. 导入现有广州行程
 
@@ -128,57 +124,24 @@ https://你的用户名.github.io/trip-planner/?trip=guangzhou-family-trip-2027
 seed/guangzhou-family-trip-2027.json
 ```
 
-进入 Trip Planner 后使用「导入 JSON」即可载入已有广州行程数据。导入会覆盖当前旅行的数据，因此建议先导出备份。
+部署完成后登录 Trip Planner，使用「导入 JSON」即可载入已有广州行程数据。导入会创建一趟新的规范化旅行，不需要 service-role key 或本地 seed 脚本。
 
 ## 安全说明
 
-这是“家庭/朋友协作”级别的共享系统，而不是企业级账号系统。编辑密码通过数据库端 SHA-256 哈希校验；匿名客户端不能直接 UPDATE 数据表，只能调用数据库 RPC。
-
-如果以后需要更强的安全性，可以升级到 Supabase Auth + magic link / email login。
+前端只使用 publishable/anon key。所有写入由 Supabase Auth 和 RLS 保护。service-role key 不需要放入本项目或部署环境。
 
 ## v2 数据库（全新规范化结构）
 
-`supabase/schema-v2.sql` 是新的规范化数据库结构，将行程、Day、活动、链接、住宿、交通、预算、Checklist、打包清单和留言拆成独立表。当前 React 界面仍使用旧版 `trip_documents` JSONB 结构；执行 v2 初始化后，需要后续前端迁移才能使用 v2 表。
-
-当前前端迁移已经开始使用 v2 表。若你已经先执行过旧版 `schema-v2.sql` 并完成过种子导入，请在 SQL Editor 额外执行 `supabase/migrate-v2-currency.sql`，再重新部署前端。
-
-当前 v2 前端还需要按顺序执行以下 SQL migration：
-
-```text
-supabase/migrate-v2-currency.sql
-supabase/migrate-v2-permissions.sql
-supabase/migrate-v2-save.sql
-```
-
-其中：
-
-- `migrate-v2-permissions.sql` 让 `trip_members` 的 `editor` 可以编辑，`viewer` 只能查看。
-- `migrate-v2-save.sql` 把整趟旅行的保存放入一个数据库事务，避免保存到一半时留下半套数据。
-- 运行后，拥有者需要把其他 Supabase Auth 用户加入 `trip_members`，并设置角色为 `editor` 或 `viewer`。
-
-目前 `visibility = 'public'` 的公开链接仍然按公开 Slug 工作；`trip_shares` 的可撤销 token 链接尚未接入前端，暂时不要把 `visibility` 改成 `link` 或 `private`，否则匿名查看会被 RLS 拒绝。
+`supabase/schema.sql` 是完整的规范化数据库结构，包含表、RLS、角色权限、事务保存和安全分享 RPC，不需要旧版 v1 schema 或额外 migration 文件。
 
 ### 在现有 Supabase 项目中重置并导入示例
 
-1. 在 Supabase Dashboard → SQL Editor 执行 `supabase/reset-v2.sql`。这只删除 v2 表，不删除现有 v1 的 `trip_documents` 数据。
-2. 执行 `supabase/schema-v2.sql`。
-3. 在本机 `.env` 中临时加入 `SUPABASE_SERVICE_ROLE_KEY`。这个 key 只能用于本地脚本，绝对不要放入 Vite 的 `VITE_*` 变量、前端代码或 Git。
-4. 可选地设置 `SUPABASE_SEED_OWNER_ID` 为 Supabase Auth 用户 UUID。
-5. 执行：
+1. 在 Supabase Dashboard → SQL Editor 执行 `supabase/reset-fresh.sql`（仅首次彻底重置时需要）。
+2. 执行 `supabase/schema.sql`。
+3. 部署前端并登录 Auth 账户。
+4. 在首页点击「导入 JSON」，选择 `seed/guangzhou-family-trip-2027.json`。
+5. 填写旅行 Slug 后创建，导入内容会通过正常的 Auth/RLS 写入流程保存。
 
-```bash
-npm run seed:v2
-```
-
-也可以导入其他 JSON 文件：
-
-```bash
-npm run seed:v2 -- seed/another-trip.json
-```
-
-脚本会按 Slug 删除已有的同名 v2 行程，再重新插入完整数据。默认 Slug 来自文件名，也可以用 `SUPABASE_SEED_SLUG` 覆盖。
-
-> `supabase/reset-all.sql` 会同时删除 v1 和 v2 表。当前 React 界面仍依赖 v1，因此在前端迁移完成前不要执行它；迁移完成后才用它进行真正的全新数据库重置。
 
 ### Supabase Auth 免费层
 

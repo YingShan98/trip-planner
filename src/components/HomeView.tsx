@@ -4,8 +4,7 @@ import { sb } from '../lib/supabase';
 import { toast } from '../lib/toast';
 import { dateRange } from '../lib/format';
 import { downloadJSON } from '../lib/download';
-import { copyTripLink } from '../lib/tripActions';
-import { deleteV2Trip } from '../lib/v2Trip';
+import { createV2ViewShare, deleteV2Trip } from '../lib/v2Trip';
 import { normalize, templateState } from '../state';
 import type { ImportedTripMeta, TripListRow, TripState } from '../types';
 import NewTripModal from './modals/V2NewTripModal';
@@ -36,6 +35,20 @@ export default function HomeView({
     if (!confirm('删除这趟旅行？此操作不可恢复。')) return;
     try { await deleteV2Trip(slug); toast('旅行已删除'); await loadTrips(); }
     catch (error) { toast('删除失败：' + (error as Error).message); }
+  };
+
+  const handleShare = async (slug: string) => {
+    try {
+      const trip = trips.find((item) => item.slug === slug);
+      if (!trip) return;
+      const token = await createV2ViewShare(trip.id);
+      const url = new URL(location.href);
+      url.searchParams.delete('trip');
+      url.searchParams.delete('readonly');
+      url.searchParams.set('share', token);
+      await navigator.clipboard.writeText(url.href);
+      toast('安全只读分享链接已复制');
+    } catch (error) { toast('分享失败：' + (error as Error).message); }
   };
 
   const downloadTemplate = () => {
@@ -131,7 +144,7 @@ export default function HomeView({
                   </button>
                   <button
                     className="flex-1 py-2.5 px-2 text-[13px] text-muted transition-colors hover:bg-surface-3 hover:text-ink-2 border-r border-line"
-                    onClick={() => copyTripLink(t.slug)}
+                    onClick={() => handleShare(t.slug)}
                   >
                     复制链接
                   </button>

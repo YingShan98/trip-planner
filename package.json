@@ -7,8 +7,7 @@
     "dev": "vite",
     "build": "tsc -b && vite build",
     "preview": "vite preview",
-    "typecheck": "tsc -b --noEmit",
-    "seed:v2": "node scripts/seed-v2.mjs"
+    "typecheck": "tsc -b --noEmit"
   },
   "dependencies": {
     "@supabase/supabase-js": "^2.45.0",

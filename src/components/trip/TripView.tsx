@@ -3,7 +3,7 @@ import { sb } from '../../lib/supabase';
 import { toast } from '../../lib/toast';
 import { dateRange } from '../../lib/format';
 import { downloadJSON } from '../../lib/download';
-import { deleteV2Trip, getV2TripRole, loadV2Trip, saveV2Trip, type V2TripMeta } from '../../lib/v2Trip';
+import { createV2ViewShare, deleteV2Trip, getV2TripRole, loadV2SharedTrip, loadV2Trip, saveV2Trip, type V2TripMeta } from '../../lib/v2Trip';
 import type { TripState } from '../../types';
 import { parseRate } from '../../lib/currency';
 import Dashboard from './Dashboard';
@@ -16,23 +16,25 @@ import BudgetSection from './BudgetSection';
 import NotesSection from './NotesSection';
 import V2SettingsModal from '../modals/V2SettingsModal';
 
-function buildShareLink(slug: string): string {
+function buildShareLink(token: string): string {
   const u = new URL(location.href);
-  u.searchParams.set('trip', slug);
-  u.searchParams.set('readonly', '1');
+  u.searchParams.delete('trip');
+  u.searchParams.delete('readonly');
+  u.searchParams.set('share', token);
   return u.toString();
 }
 
 export default function TripView({
-  slug, readOnly = false, onHome, onDeleted,
+  slug, readOnly = false, shareToken, onHome, onDeleted,
 }: {
-  slug: string; readOnly?: boolean; onHome: () => void; onDeleted: () => void;
+  slug: string; readOnly?: boolean; shareToken?: string | null; onHome: () => void; onDeleted: () => void;
 }) {
   const [currentTrip, setCurrentTrip]       = useState<V2TripMeta | null>(null);
   const [state, setState]                   = useState<TripState | null>(null);
   const [editUnlocked, setEditUnlockedState] = useState(false);
   const [syncStatus, setSyncStatus]         = useState('在线同步中');
   const [showSettings, setShowSettings]     = useState(false);
+  const [role, setRole] = useState<'owner' | 'editor' | 'viewer' | null>(null);
 
   const editUnlockedRef  = useRef(false);
   const stateRef         = useRef<TripState | null>(null);
@@ -50,10 +52,14 @@ export default function TripView({
     (async () => {
       if (!sb) return;
       try {
-        const workspace = await loadV2Trip(slug);
+        const workspace = shareToken ? await loadV2SharedTrip(shareToken) : await loadV2Trip(slug);
         if (cancelled) return;
         setCurrentTrip(workspace.trip);
         setState(workspace.state);
+        if (!shareToken) {
+          const { data: userData } = await sb.auth.getUser();
+          setRole(userData.user ? await getV2TripRole(workspace.trip.id) : null);
+        } else setRole(null);
       } catch (error) {
         if (!cancelled) toast('无法打开旅行：' + (error as Error).message);
       }
@@ -62,7 +68,7 @@ export default function TripView({
     })();
     return () => { cancelled = true; };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [slug]);
+  }, [slug, shareToken]);
 
   /* ── Realtime ── */
   useEffect(() => {
@@ -71,7 +77,7 @@ export default function TripView({
     const reload = async () => {
       if (editUnlockedRef.current && saveInFlightRef.current) return;
       try {
-        const workspace = await loadV2Trip(slug);
+        const workspace = shareToken ? await loadV2SharedTrip(shareToken) : await loadV2Trip(slug);
         setCurrentTrip(workspace.trip);
         setState(workspace.state);
         toast('行程已更新');
@@ -86,7 +92,7 @@ export default function TripView({
       .on('postgres_changes', { event: '*', schema: 'public', table: 'trip_notes' }, reload)
       .subscribe();
     return () => { client.removeChannel(channel); };
-  }, [slug]);
+  }, [slug, shareToken]);
 
   /* ── Save ── */
   const saveRemote = useCallback(async () => {
@@ -126,11 +132,8 @@ export default function TripView({
 
   const toggleEdit = async () => {
     if (editUnlocked) { setEditUnlocked(false); return; }
-    if (!sb || readOnly) return;
-    const { data, error } = await sb.auth.getUser();
-    if (error || !data.user) { toast('请先登录后编辑'); return; }
-    const role = currentTrip ? await getV2TripRole(currentTrip.id) : null;
-    if (role !== 'owner' && role !== 'editor') { toast('你没有这趟旅行的编辑权限'); return; }
+    if (!sb || readOnly || shareToken) return;
+    if (role !== 'owner' && role !== 'editor') { toast('请先登录并获得这趟旅行的编辑权限'); return; }
     setEditUnlocked(true);
     toast('已进入编辑模式');
   };
@@ -138,8 +141,11 @@ export default function TripView({
   const handleDeleteCurrent = async () => { if (await deleteV2Trip(slug)) onDeleted(); };
 
   const copyShareLink = async () => {
-    await navigator.clipboard.writeText(buildShareLink(slug));
-    toast('只读分享链接已复制');
+    try {
+      const token = await createV2ViewShare(currentTrip?.id || '');
+      await navigator.clipboard.writeText(buildShareLink(token));
+      toast('安全只读分享链接已复制');
+    } catch (error) { toast('分享失败：' + (error as Error).message); }
   };
 
   const exportJSON = () => {
@@ -197,9 +203,9 @@ export default function TripView({
                 : ''}
             </span>
             <span className="pill bg-white/13 border-white/22 text-white/90 hero-pill">
-              {editUnlocked ? '✏️ 可编辑' : readOnly ? '🔗 只读分享' : '👀 只读查看'}
+              {editUnlocked ? '✏️ 可编辑' : shareToken ? '🔐 安全分享' : readOnly ? '🔗 只读查看' : '👀 只读查看'}
             </span>
-            {!readOnly && (
+            {!readOnly && !shareToken && (role === 'owner' || role === 'editor') && (
               <span className="pill bg-white/13 border-white/22 text-white/90 hero-pill text-[11.5px]">
                 {editUnlocked ? '编辑模式' : syncStatus}
               </span>
@@ -208,7 +214,7 @@ export default function TripView({
 
           {/* Toolbar */}
           <div className="flex flex-wrap gap-2 mt-5 pt-5 border-t border-white/14">
-            {!readOnly && (
+            {!readOnly && !shareToken && role === 'owner' && (
               <button
                 className="btn bg-white/10 border-white/20 text-white/88 text-[13px] px-3.5 py-2 hover:bg-white/20 hover:border-white/40 hover:text-white hover:-translate-y-px"
                 onClick={toggleEdit}
@@ -216,7 +222,7 @@ export default function TripView({
                 {editUnlocked ? '🔒 锁定编辑' : '🔓 编辑'}
               </button>
             )}
-            {!readOnly && (
+            {!readOnly && !shareToken && (
               <button
                 className="btn bg-white/10 border-white/20 text-white/88 text-[13px] px-3.5 py-2 hover:bg-white/20 hover:border-white/40 hover:text-white hover:-translate-y-px"
                 onClick={() => setShowSettings(true)}
@@ -236,14 +242,14 @@ export default function TripView({
             >
               🖨 打印
             </button>
-            <button
+            {!shareToken && role === 'owner' && <button
               className="btn bg-white/10 border-white/20 text-white/88 text-[13px] px-3.5 py-2 hover:bg-white/20 hover:border-white/40 hover:text-white hover:-translate-y-px"
               onClick={copyShareLink}
             >
-              📤 复制分享链接
-            </button>
+              📤 创建安全分享链接
+            </button>}
             <span className="flex-1" />
-            {!readOnly && (
+            {!readOnly && !shareToken && role === 'owner' && (
               <button
                 className="btn bg-red-900/20 border-red-400/35 text-red-200 text-[13px] px-3.5 py-2 hover:bg-red-900/38 hover:border-red-400/60 hover:text-white"
                 onClick={handleDeleteCurrent}

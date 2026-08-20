@@ -94,8 +94,6 @@ export async function loadV2Trip(slug: string): Promise<V2TripWorkspace> {
   state.notes = (result('读取留言', notes) as Array<Record<string, unknown>>).map((item) => ({ author: String(item.author_name || ''), text: String(item.content || ''), ts: String(item.created_at || '') } as NoteItem));
   state.foreignCurrency = trip.foreign_currency || '';
   state.exchangeRate = trip.exchange_rate ?? '';
-  state.freeEdit = false;
-
   return { trip, state };
 }
 
@@ -128,4 +126,44 @@ export async function getV2TripRole(tripId: string): Promise<'owner' | 'editor' 
   const { data, error } = await client.rpc('trip_role', { p_trip_id: tripId });
   if (error) throw new Error(`读取旅行权限：${error.message}`);
   return data === 'owner' || data === 'editor' || data === 'viewer' ? data : null;
+}
+
+function toBase64Url(bytes: Uint8Array): string {
+  let binary = '';
+  bytes.forEach((byte) => { binary += String.fromCharCode(byte); });
+  return btoa(binary).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/g, '');
+}
+
+async function sha256Hex(value: string): Promise<string> {
+  const bytes = new TextEncoder().encode(value);
+  const digest = await crypto.subtle.digest('SHA-256', bytes);
+  return Array.from(new Uint8Array(digest), (byte) => byte.toString(16).padStart(2, '0')).join('');
+}
+
+export async function createV2ViewShare(tripId: string): Promise<string> {
+  const client = requireClient();
+  const bytes = crypto.getRandomValues(new Uint8Array(32));
+  const token = toBase64Url(bytes);
+  const tokenHash = await sha256Hex(token);
+  const { data, error } = await client.rpc('create_trip_share', {
+    p_trip_id: tripId, p_token_hash: tokenHash, p_permission: 'view', p_expires_at: null,
+  });
+  if (error || !data) throw new Error(error?.message || '分享链接创建失败');
+  return token;
+}
+
+export async function loadV2SharedTrip(token: string): Promise<V2TripWorkspace> {
+  const client = requireClient();
+  const tokenHash = await sha256Hex(token);
+  const { data, error } = await client.rpc('get_shared_trip_workspace', { p_token_hash: tokenHash });
+  if (error) throw new Error(`读取分享行程：${error.message}`);
+  if (!data) throw new Error('分享链接无效、已撤销或已过期');
+  return data as V2TripWorkspace;
+}
+
+export async function revokeV2Shares(tripId: string): Promise<number> {
+  const client = requireClient();
+  const { data, error } = await client.rpc('revoke_trip_shares', { p_trip_id: tripId });
+  if (error) throw new Error(`撤销分享链接：${error.message}`);
+  return Number(data || 0);
 }

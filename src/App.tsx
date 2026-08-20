@@ -15,9 +15,14 @@ function getReadOnlyFromURL(): boolean {
   return new URL(location.href).searchParams.get('readonly') === '1';
 }
 
+function getShareTokenFromURL(): string | null {
+  return new URL(location.href).searchParams.get('share');
+}
+
 function setURL(slug: string | null) {
   const u = new URL(location.href);
   u.searchParams.delete('readonly');
+  u.searchParams.delete('share');
   if (slug) u.searchParams.set('trip', slug);
   else u.searchParams.delete('trip');
   history.pushState({}, '', u);
@@ -26,11 +31,12 @@ function setURL(slug: string | null) {
 export default function App() {
   const [slug, setSlug] = useState<string | null>(getSlugFromURL());
   const [readOnly, setReadOnly] = useState(getReadOnlyFromURL());
+  const [shareToken, setShareToken] = useState<string | null>(getShareTokenFromURL());
   const [showNewTrip, setShowNewTrip] = useState(false);
   const [showConfigMissing, setShowConfigMissing] = useState(!hasConfig);
 
   useEffect(() => {
-    const onPop = () => { setSlug(getSlugFromURL()); setReadOnly(getReadOnlyFromURL()); };
+    const onPop = () => { setSlug(getSlugFromURL()); setReadOnly(getReadOnlyFromURL()); setShareToken(getShareTokenFromURL()); };
     window.addEventListener('popstate', onPop);
     return () => window.removeEventListener('popstate', onPop);
   }, []);
@@ -66,8 +72,8 @@ export default function App() {
         </div>
       </header>
 
-      {slug ? (
-        <TripView slug={slug} readOnly={readOnly} onHome={goHome} onDeleted={goHome} />
+      {slug || shareToken ? (
+        <TripView slug={slug || ''} readOnly={readOnly} shareToken={shareToken} onHome={goHome} onDeleted={goHome} />
       ) : (
         <HomeView onOpenTrip={openTrip} onNewTrip={handleNewTrip} />
       )}

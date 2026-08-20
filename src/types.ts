@@ -5,7 +5,7 @@ export interface LinkItem {
 
 export type Intensity = 'light' | 'medium' | 'heavy';
 
-/** 'home' = trip's home currency (TripRow.currency); 'foreign' = TripState.foreignCurrency */
+/** 'home' = trip's home currency; 'foreign' = TripState.foreignCurrency */
 export type CurrencyKey = 'home' | 'foreign';
 
 export interface Activity {
@@ -81,27 +81,10 @@ export interface TripState {
   budget: BudgetItem[];
   notes: NoteItem[];
   collapsed: Record<number, boolean>;
-  /** destination/foreign currency code, e.g. 'CNY'. Home currency lives on TripRow.currency */
+  /** destination/foreign currency code, e.g. 'CNY'. Home currency lives on the trip row. */
   foreignCurrency: string;
   /** 1 unit of foreignCurrency = exchangeRate units of home currency, e.g. 1 CNY = 0.62 MYR */
   exchangeRate: number | string;
-  /** When true, anyone can enter edit mode without a password */
-  freeEdit: boolean;
-}
-
-export interface TripRow {
-  id: string;
-  slug: string;
-  title: string;
-  destination: string;
-  start_date: string | null;
-  end_date: string | null;
-  currency: string;
-  description: string;
-  edit_requires_password: boolean;
-  data: unknown;
-  updated_at: string;
-  created_at: string;
 }
 
 export type Mutate = (fn: (draft: TripState) => void) => void;
@@ -115,7 +98,14 @@ export interface ImportedTripMeta {
   description?: string;
 }
 
-export type TripListRow = Pick<
-  TripRow,
-  'id' | 'slug' | 'title' | 'destination' | 'start_date' | 'end_date' | 'currency' | 'description' | 'updated_at'
->;
+export interface TripListRow {
+  id: string;
+  slug: string;
+  title: string;
+  destination: string;
+  start_date: string | null;
+  end_date: string | null;
+  currency: string;
+  description: string;
+  updated_at: string;
+}
