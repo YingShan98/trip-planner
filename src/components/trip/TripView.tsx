@@ -3,7 +3,7 @@ import { sb } from '../../lib/supabase';
 import { toast } from '../../lib/toast';
 import { dateRange } from '../../lib/format';
 import { downloadJSON } from '../../lib/download';
-import { createV2ViewShare, deleteV2Trip, getV2TripRole, loadV2SharedTrip, loadV2Trip, saveV2Trip, type V2TripMeta } from '../../lib/v2Trip';
+import { createV2Share, deleteV2Trip, getV2TripRole, loadV2SharedTrip, loadV2Trip, saveV2SharedTrip, saveV2Trip, type V2TripMeta } from '../../lib/v2Trip';
 import type { TripState } from '../../types';
 import { parseRate } from '../../lib/currency';
 import Dashboard from './Dashboard';
@@ -15,6 +15,7 @@ import TransportSection from './TransportSection';
 import BudgetSection from './BudgetSection';
 import NotesSection from './NotesSection';
 import V2SettingsModal from '../modals/V2SettingsModal';
+import Modal from '../Modal';
 
 function buildShareLink(token: string): string {
   const u = new URL(location.href);
@@ -35,6 +36,11 @@ export default function TripView({
   const [syncStatus, setSyncStatus]         = useState('在线同步中');
   const [showSettings, setShowSettings]     = useState(false);
   const [role, setRole] = useState<'owner' | 'editor' | 'viewer' | null>(null);
+  const [sharePermission, setSharePermission] = useState<'view' | 'edit' | null>(null);
+  const [showShare, setShowShare] = useState(false);
+  const [shareMode, setShareMode] = useState<'view' | 'edit'>('view');
+  const [shareExpiry, setShareExpiry] = useState('7');
+  const [showTop, setShowTop] = useState(false);
 
   const editUnlockedRef  = useRef(false);
   const stateRef         = useRef<TripState | null>(null);
@@ -56,6 +62,7 @@ export default function TripView({
         if (cancelled) return;
         setCurrentTrip(workspace.trip);
         setState(workspace.state);
+        setSharePermission(workspace.sharePermission || null);
         if (!shareToken) {
           const { data: userData } = await sb.auth.getUser();
           setRole(userData.user ? await getV2TripRole(workspace.trip.id) : null);
@@ -102,7 +109,8 @@ export default function TripView({
     setSyncStatus('保存中…');
     try {
       if (!stateRef.current) throw new Error('没有可保存的行程');
-      await saveV2Trip(slug, stateRef.current);
+      if (shareToken) await saveV2SharedTrip(shareToken, stateRef.current);
+      else await saveV2Trip(slug, stateRef.current);
       setSyncStatus('已同步');
       toast('已同步');
     } catch (e) {
@@ -132,21 +140,30 @@ export default function TripView({
 
   const toggleEdit = async () => {
     if (editUnlocked) { setEditUnlocked(false); return; }
-    if (!sb || readOnly || shareToken) return;
-    if (role !== 'owner' && role !== 'editor') { toast('请先登录并获得这趟旅行的编辑权限'); return; }
+    if (!sb || readOnly) return;
+    if (shareToken && sharePermission !== 'edit') { toast('此链接仅可查看'); return; }
+    if (!shareToken && role !== 'owner' && role !== 'editor') { toast('请先登录并获得这趟旅行的编辑权限'); return; }
     setEditUnlocked(true);
     toast('已进入编辑模式');
   };
 
   const handleDeleteCurrent = async () => { if (await deleteV2Trip(slug)) onDeleted(); };
 
-  const copyShareLink = async () => {
+  const createShareLink = async () => {
     try {
-      const token = await createV2ViewShare(currentTrip?.id || '');
+      const expiresAt = shareMode === 'view' || shareExpiry === '0' ? null : new Date(Date.now() + Number(shareExpiry) * 86400000).toISOString();
+      const token = await createV2Share(currentTrip?.id || '', shareMode, expiresAt);
       await navigator.clipboard.writeText(buildShareLink(token));
-      toast('安全只读分享链接已复制');
+      toast(`${shareMode === 'edit' ? '可编辑' : '只读'}分享链接已复制${expiresAt ? `，${shareExpiry}天后过期` : ''}`);
+      setShowShare(false);
     } catch (error) { toast('分享失败：' + (error as Error).message); }
   };
+
+  useEffect(() => {
+    const onScroll = () => setShowTop(window.scrollY > 600);
+    window.addEventListener('scroll', onScroll, { passive: true });
+    return () => window.removeEventListener('scroll', onScroll);
+  }, []);
 
   const exportJSON = () => {
     if (!currentTrip || !state) return;
@@ -214,7 +231,7 @@ export default function TripView({
 
           {/* Toolbar */}
           <div className="flex flex-wrap gap-2 mt-5 pt-5 border-t border-white/14">
-            {!readOnly && !shareToken && role === 'owner' && (
+            {!readOnly && (!shareToken && role === 'owner' || shareToken && sharePermission === 'edit') && (
               <button
                 className="btn bg-white/10 border-white/20 text-white/88 text-[13px] px-3.5 py-2 hover:bg-white/20 hover:border-white/40 hover:text-white hover:-translate-y-px"
                 onClick={toggleEdit}
@@ -244,9 +261,9 @@ export default function TripView({
             </button>
             {!shareToken && role === 'owner' && <button
               className="btn bg-white/10 border-white/20 text-white/88 text-[13px] px-3.5 py-2 hover:bg-white/20 hover:border-white/40 hover:text-white hover:-translate-y-px"
-              onClick={copyShareLink}
+              onClick={() => setShowShare(true)}
             >
-              📤 创建安全分享链接
+              📤 分享行程
             </button>}
             <span className="flex-1" />
             {!readOnly && !shareToken && role === 'owner' && (
@@ -261,7 +278,7 @@ export default function TripView({
         </div>
       </header>
 
-      <nav aria-label="行程目录" className="sticky top-[68px] z-40 bg-surface/94 backdrop-blur-md border-b border-line shadow-xs overflow-x-auto">
+      <nav aria-label="行程目录" className="trip-nav sticky top-[68px] z-40 bg-surface/94 backdrop-blur-md border-b border-line shadow-xs overflow-x-auto">
         <div className="max-w-[1200px] mx-auto px-6 flex items-center gap-1 min-w-max">
           {[
             ['overview', '概览'], ['prepare', '准备'], ['itinerary', '行程'],
@@ -275,26 +292,36 @@ export default function TripView({
       </nav>
 
       {/* ── Content ── */}
-      <div className="max-w-[1200px] mx-auto px-6 pb-24">
-        <div id="overview" className="scroll-mt-32"><Dashboard state={state} description={currentTrip.description} total={total} done={done} /></div>
-        <div id="prepare" className="scroll-mt-32"><Checklist state={state} editUnlocked={editUnlocked} mutate={mutate} /></div>
-        <div id="itinerary" className="scroll-mt-32"><DaysSection state={state} editUnlocked={editUnlocked} mutate={mutate} mutateNoSave={mutateNoSave} /></div>
-        <div id="stay" className="scroll-mt-32"><HotelsSection state={state} editUnlocked={editUnlocked} mutate={mutate} /></div>
-        <div id="currency" className="scroll-mt-32"><CurrencySection state={state} homeCurrency={currentTrip.home_currency} mutate={mutate} /></div>
-        <div id="transport" className="scroll-mt-32"><TransportSection state={state} editUnlocked={editUnlocked} mutate={mutate} homeCurrency={currentTrip.home_currency} /></div>
-        <div id="budget" className="scroll-mt-32"><BudgetSection state={state} editUnlocked={editUnlocked} mutate={mutate} currency={currentTrip.home_currency} /></div>
-        <div id="notes" className="scroll-mt-32"><NotesSection state={state} editUnlocked={editUnlocked} mutate={mutate} /></div>
+      <div className="trip-layout max-w-[1200px] mx-auto px-6 pb-24">
+        <aside className="trip-sidebar" aria-label="行程侧栏">
+          <p className="text-[11px] font-bold tracking-[0.12em] text-muted uppercase mb-2">行程目录</p>
+          {[['overview', '概览'], ['prepare', '准备'], ['itinerary', '行程'], ['stay', '住宿'], ['currency', '汇率'], ['transport', '交通'], ['budget', '预算'], ['notes', '讨论']].map(([id, label]) => <a key={id} href={`#${id}`}>{label}</a>)}
+          <p className="text-[11px] font-bold tracking-[0.12em] text-muted uppercase mt-5 mb-2">每天安排</p>
+          {state.days.map((day, i) => <a key={i} href={`#day-${i + 1}`}>D{i + 1} · {day.title}</a>)}
+        </aside>
+        <div className="min-w-0">
+          <div id="overview" className="scroll-mt-32"><Dashboard state={state} description={currentTrip.description} total={total} done={done} /></div>
+          <div id="prepare" className="scroll-mt-32"><Checklist state={state} editUnlocked={editUnlocked} mutate={mutate} /></div>
+          <div id="itinerary" className="scroll-mt-32"><DaysSection state={state} editUnlocked={editUnlocked} mutate={mutate} mutateNoSave={mutateNoSave} onCollapseAll={() => mutateNoSave((s) => { s.days.forEach((_, i) => { s.collapsed[i] = true; }); })} /></div>
+          <div id="stay" className="scroll-mt-32"><HotelsSection state={state} editUnlocked={editUnlocked} mutate={mutate} /></div>
+          <div id="currency" className="scroll-mt-32"><CurrencySection state={state} homeCurrency={currentTrip.home_currency} mutate={mutate} /></div>
+          <div id="transport" className="scroll-mt-32"><TransportSection state={state} editUnlocked={editUnlocked} mutate={mutate} homeCurrency={currentTrip.home_currency} /></div>
+          <div id="budget" className="scroll-mt-32"><BudgetSection state={state} editUnlocked={editUnlocked} mutate={mutate} currency={currentTrip.home_currency} /></div>
+          <div id="notes" className="scroll-mt-32"><NotesSection state={state} editUnlocked={editUnlocked} mutate={mutate} /></div>
+        </div>
       </div>
 
       {/* ── FAB save ── */}
       {editUnlocked && (
         <button
-          className="fixed right-5 bottom-5 z-[60] bg-jade-dark text-white rounded-full px-5 py-3 text-[13.5px] font-bold shadow-[0_4px_20px_rgba(26,74,57,0.40)] transition-all duration-150 flex items-center gap-1.5 hover:bg-jade hover:shadow-[0_8px_30px_rgba(26,74,57,0.50)] hover:-translate-y-0.5 active:translate-y-0"
+          className="fixed right-5 bottom-20 z-[60] bg-jade-dark text-white rounded-full px-5 py-3 text-[13.5px] font-bold shadow-[0_4px_20px_rgba(26,74,57,0.40)] transition-all duration-150 flex items-center gap-1.5 hover:bg-jade hover:shadow-[0_8px_30px_rgba(26,74,57,0.50)] hover:-translate-y-0.5 active:translate-y-0"
           onClick={saveRemote}
         >
           💾 保存同步
         </button>
       )}
+
+      {showTop && <button className="fixed right-5 bottom-5 z-[60] btn-primary rounded-full shadow-md" onClick={() => window.scrollTo({ top: 0, behavior: 'smooth' })} aria-label="回到顶部">↑ 顶部</button>}
 
       {showSettings && (
         <V2SettingsModal
@@ -303,6 +330,16 @@ export default function TripView({
           onSaved={(changes) => setCurrentTrip((prev) => (prev ? { ...prev, ...changes } : prev))}
         />
       )}
+
+      {showShare && <Modal onClose={() => setShowShare(false)}>
+        <h2 className="font-serif text-[22px] text-jade-dark mb-1">分享这趟旅行</h2>
+        <p className="text-muted text-[13px] mt-1">链接持有者无需登录。编辑链接只给可信的同行者，并设置较短有效期。</p>
+        <div className="grid gap-3.5 mt-5">
+          <div className="field"><label>权限</label><select className="inp" value={shareMode} onChange={(e) => setShareMode(e.target.value as 'view' | 'edit')}><option value="view">只读查看</option><option value="edit">可以编辑</option></select></div>
+          {shareMode === 'edit' && <div className="field"><label>有效期</label><select className="inp" value={shareExpiry} onChange={(e) => setShareExpiry(e.target.value)}><option value="1">1天</option><option value="7">7天</option><option value="30">30天</option><option value="0">不过期，直到撤销</option></select></div>}
+        </div>
+        <div className="flex justify-end mt-5 pt-4 border-t border-line"><button className="btn-primary" onClick={createShareLink}>生成并复制链接</button></div>
+      </Modal>}
     </main>
   );
 }

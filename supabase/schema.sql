@@ -316,12 +316,14 @@ begin
 end $$;
 
 -- Save the compatibility state in one transaction.
-create or replace function public.save_trip_workspace(p_trip_id uuid, p_state jsonb)
+drop function if exists public.save_trip_workspace(uuid, jsonb);
+create or replace function public.save_trip_workspace(p_trip_id uuid, p_state jsonb, p_token_hash text default null)
 returns boolean language plpgsql security definer set search_path = public, extensions
 as $$
 declare v_role text; v_day jsonb; v_activity jsonb; v_link jsonb; v_hotel jsonb; v_index integer; v_day_id uuid; v_activity_id uuid; v_hotel_id uuid; v_home_currency text; v_foreign_currency text;
 begin
   v_role := public.trip_role(p_trip_id);
+  if v_role not in ('owner', 'editor') and exists (select 1 from public.trip_shares where trip_id = p_trip_id and token_hash = p_token_hash and permission = 'edit' and revoked_at is null and (expires_at is null or expires_at > now())) then v_role := 'editor'; end if;
   if v_role not in ('owner', 'editor') or p_state is null or jsonb_typeof(p_state) <> 'object' then return false; end if;
   v_home_currency := coalesce((select home_currency from public.trips where id = p_trip_id), 'MYR');
   v_foreign_currency := coalesce(nullif(p_state->>'foreignCurrency', ''), 'CNY');
@@ -361,8 +363,8 @@ begin
   return true;
 end;
 $$;
-revoke all on function public.save_trip_workspace(uuid, jsonb) from public;
-grant execute on function public.save_trip_workspace(uuid, jsonb) to anon, authenticated;
+revoke all on function public.save_trip_workspace(uuid, jsonb, text) from public;
+grant execute on function public.save_trip_workspace(uuid, jsonb, text) to anon, authenticated;
 
 -- Secure, hashed, revocable, expiring read-only share links.
 create or replace function public.create_trip_share(p_trip_id uuid, p_token_hash text, p_permission text default 'view', p_expires_at timestamptz default null)
@@ -391,7 +393,7 @@ returns jsonb language plpgsql security definer set search_path = public, extens
 as $$
 declare v_trip_id uuid; v_trip jsonb; v_state jsonb;
 begin
-  select trip_id into v_trip_id from public.trip_shares where token_hash = p_token_hash and revoked_at is null and (expires_at is null or expires_at > now()) and permission = 'view' limit 1;
+  select trip_id into v_trip_id from public.trip_shares where token_hash = p_token_hash and revoked_at is null and (expires_at is null or expires_at > now()) limit 1;
   if v_trip_id is null then return null; end if;
   select jsonb_build_object('id', t.id, 'slug', t.slug, 'title', t.title, 'destination', t.destination, 'description', t.description, 'start_date', t.start_date, 'end_date', t.end_date, 'home_currency', t.home_currency, 'foreign_currency', t.foreign_currency, 'exchange_rate', t.exchange_rate, 'visibility', t.visibility, 'owner_id', t.owner_id, 'created_at', t.created_at, 'updated_at', t.updated_at) into v_trip from public.trips t where t.id = v_trip_id;
   select jsonb_build_object(
@@ -404,7 +406,7 @@ begin
     'notes', coalesce((select jsonb_agg(jsonb_build_object('author', n.author_name, 'text', n.content, 'ts', n.created_at) order by n.created_at desc) from public.trip_notes n where n.trip_id = v_trip_id), '[]'::jsonb),
     'collapsed', '{}'::jsonb, 'foreignCurrency', v_trip->>'foreign_currency', 'exchangeRate', v_trip->>'exchange_rate'
   ) into v_state;
-  return jsonb_build_object('trip', v_trip, 'state', v_state);
+  return jsonb_build_object('trip', v_trip, 'state', v_state, 'sharePermission', (select permission from public.trip_shares where token_hash = p_token_hash and trip_id = v_trip_id and revoked_at is null and (expires_at is null or expires_at > now()) limit 1));
 end; $$;
 
 revoke all on function public.create_trip_share(uuid, text, text, timestamptz) from public;

@@ -18,7 +18,7 @@ export default function AuthControl() {
   const client = sb;
   if (user) {
     return (
-      <button className="btn-ghost hidden sm:inline-flex" onClick={() => client.auth.signOut()} title="退出登录">
+      <button className="btn-ghost" onClick={() => client.auth.signOut()} title="退出登录">
         {user.email || '已登录'} · 退出
       </button>
     );
@@ -26,7 +26,7 @@ export default function AuthControl() {
 
   return (
     <>
-      <button className="btn-ghost hidden sm:inline-flex" onClick={() => setShowAuth(true)}>登录</button>
+      <button className="btn-ghost" onClick={() => setShowAuth(true)}>登录</button>
       {showAuth && <AuthModal onClose={() => setShowAuth(false)} />}
     </>
   );

@@ -34,6 +34,7 @@ drop table if exists public.trips cascade;
 drop table if exists public.profiles cascade;
 drop function if exists public.trip_role(uuid);
 drop function if exists public.save_trip_workspace(uuid, jsonb);
+drop function if exists public.save_trip_workspace(uuid, jsonb, text);
 drop function if exists public.create_trip_share(uuid, text, text, timestamptz);
 drop function if exists public.revoke_trip_share(uuid);
 drop function if exists public.revoke_trip_shares(uuid);

@@ -113,7 +113,7 @@ function DayCard({ d, i, total, collapsed, editUnlocked, mutate, mutateNoSave }:
   };
 
   return (
-    <article className="bg-surface border border-line rounded-lg overflow-hidden mb-3.5 shadow-xs transition-shadow duration-150 hover:shadow-sm">
+    <article id={`day-${i + 1}`} className="bg-surface border border-line rounded-lg overflow-hidden mb-3.5 shadow-xs transition-shadow duration-150 hover:shadow-sm scroll-mt-32">
       {/* Day header */}
       <div className="flex items-center gap-2.5 px-4 py-3 bg-surface-3 border-b border-line flex-wrap">
         <span className="bg-jade-dark text-white rounded-[5px] px-2.5 py-1 font-bold text-[11.5px] tracking-[0.06em] shrink-0">
@@ -237,15 +237,15 @@ function DayCard({ d, i, total, collapsed, editUnlocked, mutate, mutateNoSave }:
 }
 
 export default function DaysSection({
-  state, editUnlocked, mutate, mutateNoSave,
+  state, editUnlocked, mutate, mutateNoSave, onCollapseAll,
 }: {
-  state: TripState; editUnlocked: boolean; mutate: Mutate; mutateNoSave: Mutate;
+  state: TripState; editUnlocked: boolean; mutate: Mutate; mutateNoSave: Mutate; onCollapseAll: () => void;
 }) {
   return (
     <section className="py-7 border-b border-line">
       <div className="flex justify-between items-center gap-2.5 pb-3.5 mb-4 border-b-2 border-line flex-wrap">
         <h2 className="font-serif text-[19px] font-bold text-jade-dark">🗓️ 行程</h2>
-        <span className="text-muted text-[13px]">任意天数 · 可自由调整顺序</span>
+        <div className="flex items-center gap-2"><span className="text-muted text-[13px] hidden sm:inline">任意天数 · 可自由调整顺序</span><button className="btn-mini" onClick={onCollapseAll}>全部折叠</button></div>
       </div>
 
       {state.days.map((d, i) => (
