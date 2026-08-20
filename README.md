@@ -142,6 +142,22 @@ seed/guangzhou-family-trip-2027.json
 
 当前前端迁移已经开始使用 v2 表。若你已经先执行过旧版 `schema-v2.sql` 并完成过种子导入，请在 SQL Editor 额外执行 `supabase/migrate-v2-currency.sql`，再重新部署前端。
 
+当前 v2 前端还需要按顺序执行以下 SQL migration：
+
+```text
+supabase/migrate-v2-currency.sql
+supabase/migrate-v2-permissions.sql
+supabase/migrate-v2-save.sql
+```
+
+其中：
+
+- `migrate-v2-permissions.sql` 让 `trip_members` 的 `editor` 可以编辑，`viewer` 只能查看。
+- `migrate-v2-save.sql` 把整趟旅行的保存放入一个数据库事务，避免保存到一半时留下半套数据。
+- 运行后，拥有者需要把其他 Supabase Auth 用户加入 `trip_members`，并设置角色为 `editor` 或 `viewer`。
+
+目前 `visibility = 'public'` 的公开链接仍然按公开 Slug 工作；`trip_shares` 的可撤销 token 链接尚未接入前端，暂时不要把 `visibility` 改成 `link` 或 `private`，否则匿名查看会被 RLS 拒绝。
+
 ### 在现有 Supabase 项目中重置并导入示例
 
 1. 在 Supabase Dashboard → SQL Editor 执行 `supabase/reset-v2.sql`。这只删除 v2 表，不删除现有 v1 的 `trip_documents` 数据。

@@ -101,45 +101,9 @@ export async function loadV2Trip(slug: string): Promise<V2TripWorkspace> {
 
 export async function saveV2Trip(slug: string, state: TripState): Promise<void> {
   const client = requireClient();
-  const trip = result('读取旅行', await client.from('trips').select('id,home_currency').eq('slug', slug).single()) as { id: string; home_currency: string };
-  const home = trip.home_currency;
-  const foreign = state.foreignCurrency || 'CNY';
-
-  const days = result('清理行程', await client.from('trip_days').delete().eq('trip_id', trip.id));
-  void days;
-  for (const [dayIndex, day] of state.days.entries()) {
-    const dayRow = result('保存行程日', await client.from('trip_days').insert({
-      trip_id: trip.id, day_number: dayIndex + 1, title: day.title, intensity: day.intensity, walking_note: day.steps, map_url: day.mapUrl, notes: day.notes,
-    }).select('id').single()) as { id: string };
-    for (const [activityIndex, activity] of day.items.entries()) {
-      const activityRow = result('保存活动', await client.from('activities').insert({
-        day_id: dayRow.id, sort_order: activityIndex, time_label: activity.t, title: activity.x, transport_note: activity.move, fee_note: activity.fee,
-      }).select('id').single()) as { id: string };
-      const links = activity.link.filter((link) => link.url.trim()).map((link, linkIndex) => ({ activity_id: activityRow.id, label: link.label, url: link.url, sort_order: linkIndex }));
-      if (links.length) result('保存活动链接', await client.from('activity_links').insert(links));
-    }
-  }
-
-  const cleanup = await Promise.all([
-    client.from('checklist_items').delete().eq('trip_id', trip.id),
-    client.from('packing_items').delete().eq('trip_id', trip.id),
-    client.from('accommodations').delete().eq('trip_id', trip.id),
-    client.from('transport_options').delete().eq('trip_id', trip.id),
-    client.from('budget_items').delete().eq('trip_id', trip.id),
-    client.from('trip_notes').delete().eq('trip_id', trip.id),
-  ]);
-  cleanup.forEach((response, index) => result(`清理旅行数据 ${index + 1}`, response));
-  if (state.checklist.length) result('保存准备清单', await client.from('checklist_items').insert(state.checklist.map((item, index) => ({ trip_id: trip.id, text: item.text, is_done: item.done, sort_order: index }))));
-  if (state.packing.length) result('保存打包清单', await client.from('packing_items').insert(state.packing.map((item, index) => ({ trip_id: trip.id, category: item.category, text: item.text, is_done: item.done, sort_order: index }))));
-  for (const [index, hotel] of state.hotels.entries()) {
-    const hotelRow = result('保存住宿', await client.from('accommodations').insert({ trip_id: trip.id, sort_order: index, rank_label: hotel.rank, name: hotel.name, address: hotel.addr, warning: hotel.warn, pros_cons: hotel.pointsText, notes: hotel.notes }).select('id').single()) as { id: string };
-    const links = hotel.link.filter((link) => link.url.trim()).map((link, linkIndex) => ({ accommodation_id: hotelRow.id, label: link.label, url: link.url, sort_order: linkIndex }));
-    if (links.length) result('保存住宿链接', await client.from('accommodation_links').insert(links));
-  }
-  if (state.transport.length) result('保存交通', await client.from('transport_options').insert(state.transport.map((item, index) => ({ trip_id: trip.id, sort_order: index, type: item.type, description: item.description, price_label: item.price, amount: item.amount === '' ? null : Number(item.amount), currency_code: item.currency === 'home' ? home : foreign }))));
-  if (state.budget.length) result('保存预算', await client.from('budget_items').insert(state.budget.map((item, index) => ({ trip_id: trip.id, sort_order: index, category: item.category, unit: item.unit, quantity: Number(item.quantity) || 0, unit_price: Number(item.unitPrice) || 0, currency_code: item.currency === 'home' ? home : foreign, note: item.note }))));
-  if (state.notes.length) result('保存留言', await client.from('trip_notes').insert(state.notes.map((item) => ({ trip_id: trip.id, author_name: item.author, content: item.text }))));
-  result('保存旅行设置', await client.from('trips').update({ foreign_currency: foreign, exchange_rate: state.exchangeRate === '' ? null : Number(state.exchangeRate) }).eq('id', trip.id));
+  const trip = result('读取旅行', await client.from('trips').select('id').eq('slug', slug).single()) as { id: string };
+  const response = await client.rpc('save_trip_workspace', { p_trip_id: trip.id, p_state: state });
+  if (response.error || response.data !== true) throw new Error(response.error?.message || '保存失败');
 }
 
 export async function createV2Trip(input: { slug: string; title: string; destination: string; start_date: string | null; end_date: string | null; home_currency: string; description: string; state: TripState }) {
@@ -157,4 +121,11 @@ export async function deleteV2Trip(slug: string) {
   const trip = result('读取旅行', await client.from('trips').select('id').eq('slug', slug).single()) as { id: string };
   result('删除旅行', await client.from('trips').delete().eq('id', trip.id));
   return true;
+}
+
+export async function getV2TripRole(tripId: string): Promise<'owner' | 'editor' | 'viewer' | null> {
+  const client = requireClient();
+  const { data, error } = await client.rpc('trip_role', { p_trip_id: tripId });
+  if (error) throw new Error(`读取旅行权限：${error.message}`);
+  return data === 'owner' || data === 'editor' || data === 'viewer' ? data : null;
 }

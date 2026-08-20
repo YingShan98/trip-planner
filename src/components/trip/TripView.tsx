@@ -3,7 +3,7 @@ import { sb } from '../../lib/supabase';
 import { toast } from '../../lib/toast';
 import { dateRange } from '../../lib/format';
 import { downloadJSON } from '../../lib/download';
-import { deleteV2Trip, loadV2Trip, saveV2Trip, type V2TripMeta } from '../../lib/v2Trip';
+import { deleteV2Trip, getV2TripRole, loadV2Trip, saveV2Trip, type V2TripMeta } from '../../lib/v2Trip';
 import type { TripState } from '../../types';
 import { parseRate } from '../../lib/currency';
 import Dashboard from './Dashboard';
@@ -129,7 +129,8 @@ export default function TripView({
     if (!sb || readOnly) return;
     const { data, error } = await sb.auth.getUser();
     if (error || !data.user) { toast('请先登录后编辑'); return; }
-    if (data.user.id !== currentTrip?.owner_id) { toast('只有旅行拥有者可以编辑'); return; }
+    const role = currentTrip ? await getV2TripRole(currentTrip.id) : null;
+    if (role !== 'owner' && role !== 'editor') { toast('你没有这趟旅行的编辑权限'); return; }
     setEditUnlocked(true);
     toast('已进入编辑模式');
   };
