@@ -4,6 +4,7 @@ import { toast } from '../../lib/toast';
 import { dateRange } from '../../lib/format';
 import { downloadJSON } from '../../lib/download';
 import { createV2Share, deleteV2Trip, getV2TripRole, loadV2SharedTrip, loadV2Trip, saveV2SharedTrip, saveV2Trip, type V2TripMeta } from '../../lib/v2Trip';
+import { ensureGuestSession, getTripEditEvents, isAnonymousUser, setGuestName, type TripEditEvent } from '../../lib/guestAuth';
 import type { TripState } from '../../types';
 import { parseRate } from '../../lib/currency';
 import Dashboard from './Dashboard';
@@ -16,6 +17,8 @@ import BudgetSection from './BudgetSection';
 import NotesSection from './NotesSection';
 import V2SettingsModal from '../modals/V2SettingsModal';
 import Modal from '../Modal';
+import GuestIdentityModal from '../modals/GuestIdentityModal';
+import EditHistoryModal from '../modals/EditHistoryModal';
 
 function buildShareLink(token: string): string {
   const u = new URL(location.href);
@@ -41,14 +44,20 @@ export default function TripView({
   const [shareMode, setShareMode] = useState<'view' | 'edit'>('view');
   const [shareExpiry, setShareExpiry] = useState('7');
   const [showTop, setShowTop] = useState(false);
+  const [showGuestIdentity, setShowGuestIdentity] = useState(false);
+  const [guestName, setGuestNameState] = useState(() => localStorage.getItem(`trip-guest-name:${shareToken || ''}`) || '');
+  const [editEvents, setEditEvents] = useState<TripEditEvent[] | null>(null);
+  const [hasUnsavedChanges, setHasUnsavedChanges] = useState(false);
+  const [isSaving, setIsSaving] = useState(false);
 
   const editUnlockedRef  = useRef(false);
+  const hasUnsavedChangesRef = useRef(false);
   const stateRef         = useRef<TripState | null>(null);
-  const saveTimerRef     = useRef<ReturnType<typeof setTimeout>>();
   const saveInFlightRef  = useRef(false);
   const savePendingRef   = useRef(false);
 
   useEffect(() => { stateRef.current = state; }, [state]);
+  useEffect(() => { hasUnsavedChangesRef.current = hasUnsavedChanges; }, [hasUnsavedChanges]);
 
   const setEditUnlocked = (v: boolean) => { editUnlockedRef.current = v; setEditUnlockedState(v); };
 
@@ -82,7 +91,7 @@ export default function TripView({
     const client = sb;
     if (!client) return;
     const reload = async () => {
-      if (editUnlockedRef.current && saveInFlightRef.current) return;
+      if (editUnlockedRef.current && (saveInFlightRef.current || hasUnsavedChangesRef.current)) return;
       try {
         const workspace = shareToken ? await loadV2SharedTrip(shareToken) : await loadV2Trip(slug);
         setCurrentTrip(workspace.trip);
@@ -103,14 +112,16 @@ export default function TripView({
 
   /* ── Save ── */
   const saveRemote = useCallback(async () => {
-    if (!editUnlockedRef.current || !sb) return;
+    if (!editUnlockedRef.current || !hasUnsavedChanges || !sb || isSaving) return;
     if (saveInFlightRef.current) { savePendingRef.current = true; return; }
     saveInFlightRef.current = true;
+    setIsSaving(true);
     setSyncStatus('保存中…');
     try {
       if (!stateRef.current) throw new Error('没有可保存的行程');
       if (shareToken) await saveV2SharedTrip(shareToken, stateRef.current);
       else await saveV2Trip(slug, stateRef.current);
+      setHasUnsavedChanges(false);
       setSyncStatus('已同步');
       toast('已同步');
     } catch (e) {
@@ -118,33 +129,62 @@ export default function TripView({
       toast('保存失败：' + (e as Error).message);
     } finally {
       saveInFlightRef.current = false;
+      setIsSaving(false);
       if (savePendingRef.current) { savePendingRef.current = false; saveRemote(); }
     }
-  }, [slug]);
-
-  const scheduleSave = useCallback(() => {
-    if (!editUnlockedRef.current) return;
-    clearTimeout(saveTimerRef.current);
-    setSyncStatus('等待保存…');
-    saveTimerRef.current = setTimeout(saveRemote, 650);
-  }, [saveRemote]);
+  }, [hasUnsavedChanges, isSaving, shareToken, slug]);
 
   const mutate = useCallback((fn: (draft: TripState) => void) => {
     setState((prev) => { if (!prev) return prev; const next = structuredClone(prev); fn(next); return next; });
-    scheduleSave();
-  }, [scheduleSave]);
+    setHasUnsavedChanges(true);
+    setSyncStatus('有未保存的修改');
+  }, []);
 
   const mutateNoSave = useCallback((fn: (draft: TripState) => void) => {
     setState((prev) => { if (!prev) return prev; const next = structuredClone(prev); fn(next); return next; });
   }, []);
 
   const toggleEdit = async () => {
-    if (editUnlocked) { setEditUnlocked(false); return; }
+    if (editUnlocked) {
+      if (hasUnsavedChanges && !confirm('还有未保存的修改，确定退出编辑模式吗？')) return;
+      setEditUnlocked(false);
+      return;
+    }
     if (!sb || readOnly) return;
     if (shareToken && sharePermission !== 'edit') { toast('此链接仅可查看'); return; }
+    if (shareToken && sharePermission === 'edit') {
+      try {
+        const guest = await ensureGuestSession();
+        if (isAnonymousUser(guest) && !guestName) { setShowGuestIdentity(true); return; }
+      } catch (error) { toast('无法开启访客编辑：' + (error as Error).message); return; }
+    }
     if (!shareToken && role !== 'owner' && role !== 'editor') { toast('请先登录并获得这趟旅行的编辑权限'); return; }
     setEditUnlocked(true);
     toast('已进入编辑模式');
+  };
+
+  const continueAsGuest = async (name: string, captchaToken: string) => {
+    if (!shareToken || !currentTrip) return;
+    try {
+      await ensureGuestSession(captchaToken);
+      await setGuestName(currentTrip.id, shareToken, name);
+      localStorage.setItem(`trip-guest-name:${shareToken}`, name);
+      setGuestNameState(name);
+      setShowGuestIdentity(false);
+      setEditUnlocked(true);
+      toast(`已作为「${name}」进入编辑模式`);
+    } catch (error) { toast('访客身份保存失败：' + (error as Error).message); }
+  };
+
+  const leaveTrip = () => {
+    if (hasUnsavedChanges && !confirm('还有未保存的修改，确定离开吗？')) return;
+    onHome();
+  };
+
+  const openEditHistory = async () => {
+    if (!currentTrip) return;
+    try { setEditEvents(await getTripEditEvents(currentTrip.id)); }
+    catch (error) { toast('无法读取编辑记录：' + (error as Error).message); }
   };
 
   const handleDeleteCurrent = async () => { if (await deleteV2Trip(slug)) onDeleted(); };
@@ -164,6 +204,16 @@ export default function TripView({
     window.addEventListener('scroll', onScroll, { passive: true });
     return () => window.removeEventListener('scroll', onScroll);
   }, []);
+
+  useEffect(() => {
+    const warnBeforeLeave = (event: BeforeUnloadEvent) => {
+      if (!hasUnsavedChanges) return;
+      event.preventDefault();
+      event.returnValue = '';
+    };
+    window.addEventListener('beforeunload', warnBeforeLeave);
+    return () => window.removeEventListener('beforeunload', warnBeforeLeave);
+  }, [hasUnsavedChanges]);
 
   const exportJSON = () => {
     if (!currentTrip || !state) return;
@@ -201,7 +251,7 @@ export default function TripView({
         <div className="relative z-10">
           <button
             className="btn mb-5 bg-white/10 border-white/22 text-white/88 text-[13px] px-3.5 py-1.5 hover:bg-white/18 hover:border-white/45 hover:text-white hover:-translate-x-0.5"
-            onClick={onHome}
+            onClick={leaveTrip}
           >
             ← 我的旅行
           </button>
@@ -265,6 +315,12 @@ export default function TripView({
             >
               📤 分享行程
             </button>}
+            {!shareToken && role === 'owner' && <button
+              className="btn bg-white/10 border-white/20 text-white/88 text-[13px] px-3.5 py-2 hover:bg-white/20 hover:border-white/40 hover:text-white hover:-translate-y-px"
+              onClick={openEditHistory}
+            >
+              🧾 编辑记录
+            </button>}
             <span className="flex-1" />
             {!readOnly && !shareToken && role === 'owner' && (
               <button
@@ -314,14 +370,16 @@ export default function TripView({
       {/* ── FAB save ── */}
       {editUnlocked && (
         <button
-          className="fixed right-5 bottom-20 z-[60] bg-jade-dark text-white rounded-full px-5 py-3 text-[13.5px] font-bold shadow-[0_4px_20px_rgba(26,74,57,0.40)] transition-all duration-150 flex items-center gap-1.5 hover:bg-jade hover:shadow-[0_8px_30px_rgba(26,74,57,0.50)] hover:-translate-y-0.5 active:translate-y-0"
+          className={`fixed right-5 bottom-5 z-[60] rounded-full px-5 py-3 text-[13.5px] font-bold shadow-md transition-all duration-150 flex items-center gap-1.5 ${hasUnsavedChanges ? 'bg-coral text-white hover:bg-danger' : 'bg-jade-dark text-white hover:bg-jade'} disabled:opacity-70`}
           onClick={saveRemote}
+          disabled={!hasUnsavedChanges || isSaving}
+          title={hasUnsavedChanges ? '保存未保存的修改' : '当前没有未保存的修改'}
         >
-          💾 保存同步
+          {isSaving ? '⏳ 保存中…' : hasUnsavedChanges ? '💾 保存修改' : '✓ 已保存'}
         </button>
       )}
 
-      {showTop && <button className="fixed right-5 bottom-5 z-[60] btn-primary rounded-full shadow-md" onClick={() => window.scrollTo({ top: 0, behavior: 'smooth' })} aria-label="回到顶部">↑ 顶部</button>}
+      {showTop && <button className="fixed right-5 bottom-20 z-[60] btn-primary rounded-full shadow-md" onClick={() => window.scrollTo({ top: 0, behavior: 'smooth' })} aria-label="回到顶部">↑ 顶部</button>}
 
       {showSettings && (
         <V2SettingsModal
@@ -340,6 +398,9 @@ export default function TripView({
         </div>
         <div className="flex justify-end mt-5 pt-4 border-t border-line"><button className="btn-primary" onClick={createShareLink}>生成并复制链接</button></div>
       </Modal>}
+
+      {showGuestIdentity && <GuestIdentityModal initialName={guestName} onClose={() => setShowGuestIdentity(false)} onContinue={continueAsGuest} />}
+      {editEvents && <EditHistoryModal events={editEvents} onClose={() => setEditEvents(null)} />}
     </main>
   );
 }

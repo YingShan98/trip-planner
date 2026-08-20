@@ -1,0 +1,16 @@
+project_id = "trip-planner"
+
+[db]
+major_version = 15
+
+[api]
+enabled = true
+
+[studio]
+enabled = false
+
+[auth]
+enabled = true
+
+[realtime]
+enabled = true

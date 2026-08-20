@@ -48,6 +48,28 @@ create table if not exists public.trip_shares (
   created_at timestamptz not null default now()
 );
 
+create table if not exists public.trip_guest_identities (
+  trip_id uuid not null references public.trips(id) on delete cascade,
+  user_id uuid not null references auth.users(id) on delete cascade,
+  display_name text not null check (char_length(display_name) between 1 and 80),
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now(),
+  primary key (trip_id, user_id)
+);
+
+create table if not exists public.trip_edit_events (
+  id uuid primary key default gen_random_uuid(),
+  trip_id uuid not null references public.trips(id) on delete cascade,
+  actor_id uuid references auth.users(id) on delete set null,
+  actor_name text not null default '同行者',
+  actor_type text not null check (actor_type in ('owner', 'member', 'guest')),
+  share_id uuid references public.trip_shares(id) on delete set null,
+  action text not null default 'update',
+  section text not null default 'workspace',
+  summary text not null default '更新了旅行计划',
+  created_at timestamptz not null default now()
+);
+
 create table if not exists public.trip_days (
   id uuid primary key default gen_random_uuid(),
   trip_id uuid not null references public.trips(id) on delete cascade,
@@ -172,11 +194,14 @@ create index if not exists accommodations_trip_order_idx on public.accommodation
 create index if not exists transport_trip_order_idx on public.transport_options(trip_id, sort_order);
 create index if not exists budget_trip_order_idx on public.budget_items(trip_id, sort_order);
 create index if not exists notes_trip_created_idx on public.trip_notes(trip_id, created_at desc);
+create index if not exists edit_events_trip_created_idx on public.trip_edit_events(trip_id, created_at desc);
 
 alter table public.profiles enable row level security;
 alter table public.trips enable row level security;
 alter table public.trip_members enable row level security;
 alter table public.trip_shares enable row level security;
+alter table public.trip_guest_identities enable row level security;
+alter table public.trip_edit_events enable row level security;
 alter table public.trip_days enable row level security;
 alter table public.activities enable row level security;
 alter table public.activity_links enable row level security;
@@ -197,6 +222,8 @@ create policy "members read memberships" on public.trip_members for select using
 create policy "owners manage memberships" on public.trip_members for all using (exists (select 1 from public.trips t where t.id = trip_id and t.owner_id = auth.uid())) with check (exists (select 1 from public.trips t where t.id = trip_id and t.owner_id = auth.uid()));
 create policy "owners read shares" on public.trip_shares for select using (exists (select 1 from public.trips t where t.id = trip_id and t.owner_id = auth.uid()));
 create policy "owners manage shares" on public.trip_shares for all using (exists (select 1 from public.trips t where t.id = trip_id and t.owner_id = auth.uid())) with check (exists (select 1 from public.trips t where t.id = trip_id and t.owner_id = auth.uid()));
+create policy "guests manage own identity" on public.trip_guest_identities for all using (user_id = auth.uid()) with check (user_id = auth.uid());
+create policy "owners read edit events" on public.trip_edit_events for select using (exists (select 1 from public.trips t where t.id = trip_id and t.owner_id = auth.uid()));
 
 -- Child rows are readable when their trip is public or owned by the current user.
 create policy "public days are readable" on public.trip_days for select using (exists (select 1 from public.trips t where t.id = trip_id and (t.visibility = 'public' or t.owner_id = auth.uid())));
@@ -268,7 +295,7 @@ grant execute on function public.trip_role(uuid) to anon, authenticated;
 
 drop policy if exists "public trips are readable" on public.trips;
 drop policy if exists "owners manage trips" on public.trips;
-create policy "trip visibility read" on public.trips for select using (visibility = 'public' or owner_id = auth.uid() or public.trip_role(id) in ('owner', 'editor', 'viewer'));
+create policy "trip visibility read" on public.trips for select using (owner_id = auth.uid() or public.trip_role(id) in ('owner', 'editor', 'viewer'));
 create policy "trip owners manage" on public.trips for all using (owner_id = auth.uid()) with check (owner_id = auth.uid());
 
 drop policy if exists "members read memberships" on public.trip_members;
@@ -283,12 +310,12 @@ create policy "owners manage shares" on public.trip_shares for all using (public
 
 drop policy if exists "public days are readable" on public.trip_days;
 drop policy if exists "owners manage days" on public.trip_days;
-create policy "trip days read" on public.trip_days for select using (exists (select 1 from public.trips t where t.id = trip_id and (t.visibility = 'public' or public.trip_role(t.id) in ('owner', 'editor', 'viewer'))));
+create policy "trip days read" on public.trip_days for select using (exists (select 1 from public.trips t where t.id = trip_id and public.trip_role(t.id) in ('owner', 'editor', 'viewer')));
 create policy "trip days write" on public.trip_days for all using (public.trip_role(trip_id) in ('owner', 'editor')) with check (public.trip_role(trip_id) in ('owner', 'editor'));
 
 drop policy if exists "public activities are readable" on public.activities;
 drop policy if exists "owners manage activities" on public.activities;
-create policy "activities read" on public.activities for select using (exists (select 1 from public.trip_days d join public.trips t on t.id = d.trip_id where d.id = day_id and (t.visibility = 'public' or public.trip_role(t.id) in ('owner', 'editor', 'viewer'))));
+create policy "activities read" on public.activities for select using (exists (select 1 from public.trip_days d join public.trips t on t.id = d.trip_id where d.id = day_id and public.trip_role(t.id) in ('owner', 'editor', 'viewer')));
 create policy "activities write" on public.activities for all using (exists (select 1 from public.trip_days d where d.id = day_id and public.trip_role(d.trip_id) in ('owner', 'editor'))) with check (exists (select 1 from public.trip_days d where d.id = day_id and public.trip_role(d.trip_id) in ('owner', 'editor')));
 
 drop policy if exists "public activity links are readable" on public.activity_links;
@@ -310,13 +337,15 @@ begin
       else 'public notes are readable' end;
     execute format('drop policy if exists %I on public.%I', readable_policy, table_name);
     execute format('drop policy if exists %I on public.%I', 'owners manage ' || table_name, table_name);
-    execute format('create policy %I on public.%I for select using (exists (select 1 from public.trips t where t.id = trip_id and (t.visibility = ''public'' or public.trip_role(t.id) in (''owner'', ''editor'', ''viewer''))))', label || ' read', table_name);
+    execute format('create policy %I on public.%I for select using (exists (select 1 from public.trips t where t.id = trip_id and public.trip_role(t.id) in (''owner'', ''editor'', ''viewer'')))', label || ' read', table_name);
     execute format('create policy %I on public.%I for all using (public.trip_role(trip_id) in (''owner'', ''editor'')) with check (public.trip_role(trip_id) in (''owner'', ''editor''))', label || ' write', table_name);
   end loop;
 end $$;
 
 -- Save the compatibility state in one transaction.
 drop function if exists public.save_trip_workspace(uuid, jsonb);
+drop function if exists public.save_trip_workspace(uuid, jsonb, text);
+drop function if exists public.save_trip_workspace(uuid, jsonb, text, text);
 create or replace function public.save_trip_workspace(p_trip_id uuid, p_state jsonb, p_token_hash text default null)
 returns boolean language plpgsql security definer set search_path = public, extensions
 as $$
@@ -360,11 +389,46 @@ begin
     end loop;
     v_index := v_index + 1;
   end loop;
+  insert into public.trip_edit_events(trip_id, actor_id, actor_name, actor_type, share_id, summary)
+  values (
+    p_trip_id,
+    auth.uid(),
+    coalesce(nullif((select gi.display_name from public.trip_guest_identities gi where gi.trip_id = p_trip_id and gi.user_id = auth.uid()), ''), nullif((select p.display_name from public.profiles p where p.id = auth.uid()), ''), case when public.trip_role(p_trip_id) = 'owner' then '旅行拥有者' else '同行者' end),
+    case when public.trip_role(p_trip_id) = 'owner' then 'owner' when public.trip_role(p_trip_id) in ('editor', 'viewer') then 'member' else 'guest' end,
+    (select s.id from public.trip_shares s where s.trip_id = p_trip_id and s.token_hash = p_token_hash and s.revoked_at is null limit 1),
+    '更新了旅行计划'
+  );
   return true;
 end;
 $$;
 revoke all on function public.save_trip_workspace(uuid, jsonb, text) from public;
 grant execute on function public.save_trip_workspace(uuid, jsonb, text) to anon, authenticated;
+
+create or replace function public.set_trip_guest_name(p_trip_id uuid, p_token_hash text, p_display_name text)
+returns boolean language plpgsql security definer set search_path = public, extensions
+as $$
+begin
+  if auth.uid() is null or nullif(trim(p_display_name), '') is null or char_length(trim(p_display_name)) > 80 then return false; end if;
+  if not exists (select 1 from public.trip_shares where trip_id = p_trip_id and token_hash = p_token_hash and permission = 'edit' and revoked_at is null and (expires_at is null or expires_at > now())) then return false; end if;
+  insert into public.trip_guest_identities(trip_id, user_id, display_name) values (p_trip_id, auth.uid(), trim(p_display_name))
+  on conflict (trip_id, user_id) do update set display_name = excluded.display_name, updated_at = now();
+  return true;
+end; $$;
+
+create or replace function public.get_trip_edit_events(p_trip_id uuid)
+returns table(id uuid, actor_name text, actor_type text, action text, section text, summary text, created_at timestamptz)
+language sql security definer set search_path = public, extensions
+as $$
+  select e.id, e.actor_name, e.actor_type, e.action, e.section, e.summary, e.created_at
+  from public.trip_edit_events e join public.trips t on t.id = e.trip_id
+  where e.trip_id = p_trip_id and t.owner_id = auth.uid()
+  order by e.created_at desc limit 100;
+$$;
+
+revoke all on function public.set_trip_guest_name(uuid, text, text) from public;
+grant execute on function public.set_trip_guest_name(uuid, text, text) to anon, authenticated;
+revoke all on function public.get_trip_edit_events(uuid) from public;
+grant execute on function public.get_trip_edit_events(uuid) to authenticated;
 
 -- Secure, hashed, revocable, expiring read-only share links.
 create or replace function public.create_trip_share(p_trip_id uuid, p_token_hash text, p_permission text default 'view', p_expires_at timestamptz default null)

@@ -7,7 +7,7 @@
 ## 功能
 
 - 多旅行管理：创建、复制、删除、打开不同旅行
-- 公开查看：公开旅行无需登录即可查看
+- 分享查看：持有效分享链接即可查看，无需登录
 - Auth 协作：拥有者、编辑者、查看者角色
 - 安全分享：随机 token、哈希存储、可撤销、可过期的只读链接
 - 实时同步：Supabase Realtime 推送其他人的修改
@@ -33,23 +33,52 @@
 
 你目前的 Supabase 项目可以直接使用，例如：`Trip Planner`，区域 Tokyo 也可以。
 
-## 2. 初始化数据库
+## 2. 初始化和迁移数据库
 
-打开 Supabase Dashboard → SQL Editor → New query。
+安装 Supabase CLI，然后在项目根目录登录并关联项目：
 
-把下面文件的全部内容粘贴到 Supabase SQL Editor 执行：
-
-```text
-supabase/schema.sql
+```bash
+npm install
+npx supabase login
+npx supabase link --project-ref <your-project-ref>
 ```
 
-如果是已有项目并要彻底清空旧 v1/v2 数据，先执行 `supabase/reset-fresh.sql`，再执行 `supabase/schema.sql`。这个操作不可恢复。
+首次安装或本地开发数据库重置：
+
+```bash
+npm run db:reset
+```
+
+将本地迁移应用到已关联的 Supabase 项目：
+
+```bash
+npm run db:push
+```
+
+GitHub Actions 也会在每次推送到 `main` 时，先执行数据库迁移，成功后才部署 GitHub Pages。也可以在 GitHub → Actions → **Migrate Supabase database** → **Run workflow** 手动执行迁移。
+
+在 repository secrets 中配置以下值：
+
+- `SUPABASE_ACCESS_TOKEN`：Supabase personal access token
+- `SUPABASE_DB_PASSWORD`：Supabase database password
+- `SUPABASE_PROJECT_REF`：Supabase 项目 ref，例如 `abcdefghijklmnopqrst`
+
+所有后续数据库变更都必须新增 `supabase/migrations/<timestamp>_<name>.sql`，不要修改已经执行过的迁移。Supabase CLI 不会根据实体或 SQL 的修改自动生成 migration 文件；修改表结构后，需要手动创建并提交迁移：
+
+```bash
+npx supabase migration new describe-your-change
+```
+
+编辑生成的 SQL 后，先用 `npm run db:reset` 在本地验证，再提交并推送。`supabase/schema.sql` 仍是完整的手动安装/参考脚本；正常升级使用迁移命令，不需要删除数据。
+
+不要对有数据的远程项目运行 `npm run db:reset`。只有需要清空整个项目时，才在 SQL Editor 执行 `supabase/reset-fresh.sql`，然后重新执行迁移。
 
 这些脚本会创建：
 
 - `trips`、`trip_days`、`activities` 等规范化表
 - `trip_members`：拥有者、编辑者、查看者
 - `trip_shares`：哈希 token 分享链接
+- `trip_guest_identities` 和 `trip_edit_events`：访客身份与编辑记录
 - RLS policies 和事务保存 RPC
 - Realtime publication
 
@@ -65,10 +94,13 @@ supabase/schema.sql
 
 - Project URL → `VITE_SUPABASE_URL`
 - Publishable key / anon public key → `VITE_SUPABASE_KEY`
+- hCaptcha site key → `VITE_HCAPTCHA_SITE_KEY`
 
 `.env` 已加入 `.gitignore`，所以不会被 Git 提交。这些值在构建时会被 Vite 打包进前端代码。
 
 **anon/publishable key 可以出现在前端；Database Password、service_role key 绝对不要放进前端。**
+
+在 Supabase Dashboard 的 **Authentication → Providers → CAPTCHA** 中启用 hCaptcha，并配置与前端对应的 site key 和 secret。前端只使用 site key；hCaptcha secret 只保留在 Supabase。匿名访客编辑会在提交编辑权限时执行 invisible hCaptcha，并将 token 交给 Supabase Auth 验证。
 
 ## 4. 本地测试
 
@@ -94,6 +126,7 @@ npm run typecheck  # TypeScript 类型检查
 3. Repository → Settings → Secrets and variables → Actions → **Secrets** 标签页，添加：
    - `VITE_SUPABASE_URL`
    - `VITE_SUPABASE_KEY`
+   - `VITE_HCAPTCHA_SITE_KEY`
    （这些是 publishable/anon key，CI workflow 从 `secrets.*` 读取）
 4. GitHub → Settings → Pages → Source 选择 `GitHub Actions`
 5. 推送到 `main` 分支，`.github/workflows/pages.yml` 会自动执行 `npm ci && npm run build` 并部署 `dist/`
@@ -130,17 +163,16 @@ seed/guangzhou-family-trip-2027.json
 
 前端只使用 publishable/anon key。所有写入由 Supabase Auth 和 RLS 保护。service-role key 不需要放入本项目或部署环境。
 
-## v2 数据库（全新规范化结构）
+## v2 数据库（规范化结构）
 
-`supabase/schema.sql` 是完整的规范化数据库结构，包含表、RLS、角色权限、事务保存和安全分享 RPC，不需要旧版 v1 schema 或额外 migration 文件。
+`supabase/migrations` 是数据库变更的版本记录，包含表、RLS、角色权限、事务保存和安全分享 RPC。当前迁移会保留已有旅行数据，并加入访客身份与编辑历史能力。
 
 ### 在现有 Supabase 项目中重置并导入示例
 
-1. 在 Supabase Dashboard → SQL Editor 执行 `supabase/reset-fresh.sql`（仅首次彻底重置时需要）。
-2. 执行 `supabase/schema.sql`。
-3. 部署前端并登录 Auth 账户。
-4. 在首页点击「导入 JSON」，选择 `seed/guangzhou-family-trip-2027.json`。
-5. 填写旅行 Slug 后创建，导入内容会通过正常的 Auth/RLS 写入流程保存。
+1. 按上面的 CLI 流程执行 `npm run db:push`。
+2. 部署前端并登录 Auth 账户。
+3. 在首页点击「导入 JSON」，选择 `seed/guangzhou-family-trip-2027.json`。
+4. 填写旅行 Slug 后创建，导入内容会通过正常的 Auth/RLS 写入流程保存。
 
 
 ### Supabase Auth 免费层

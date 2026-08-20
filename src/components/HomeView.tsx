@@ -10,17 +10,18 @@ import type { ImportedTripMeta, TripListRow, TripState } from '../types';
 import NewTripModal from './modals/V2NewTripModal';
 
 export default function HomeView({
-  onOpenTrip, onNewTrip,
+  onOpenTrip, onNewTrip, isAuthenticated,
 }: {
   onOpenTrip: (slug: string) => void;
   onNewTrip: () => void;
+  isAuthenticated: boolean;
 }) {
   const [trips, setTrips] = useState<TripListRow[]>([]);
   const [importPayload, setImportPayload] = useState<{ meta: ImportedTripMeta; data: TripState } | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   const loadTrips = async () => {
-    if (!sb) { setTrips([]); return; }
+    if (!sb || !isAuthenticated) { setTrips([]); return; }
     const { data, error } = await sb
       .from('trips')
       .select('id,slug,title,destination,start_date,end_date,home_currency,description,updated_at')
@@ -29,7 +30,7 @@ export default function HomeView({
     setTrips((data || []).map((trip) => ({ ...trip, currency: trip.home_currency })) as TripListRow[]);
   };
 
-  useEffect(() => { loadTrips(); }, []);
+  useEffect(() => { loadTrips(); }, [isAuthenticated]);
 
   const handleDelete = async (slug: string) => {
     if (!confirm('删除这趟旅行？此操作不可恢复。')) return;
@@ -86,12 +87,12 @@ export default function HomeView({
             和同行的人一起整理行程、住宿、预算与出发准备。打开链接即可查看，输入密码即可共同编辑。
           </p>
         </div>
-        <button
+        {isAuthenticated && <button
           className="btn-primary btn-lg shrink-0 bg-white/14 border-white/45 text-white hover:bg-white/24 hover:border-white/75 hover:shadow-md hover:-translate-y-0.5 relative z-10"
           onClick={onNewTrip}
         >
           ＋ 创建第一段旅程
-        </button>
+        </button>}
         {/* background radial highlight */}
         <div className="absolute inset-0 bg-[radial-gradient(circle_at_80%_20%,rgba(255,255,255,0.06)_0%,transparent_55%)]" />
       </section>
@@ -102,8 +103,7 @@ export default function HomeView({
           <h2 className="font-serif text-[19px] font-bold text-jade-dark">旅程收藏</h2>
           <div className="flex flex-wrap gap-2 items-center">
             <span className="text-muted text-[13px]">{trips.length} 个旅行</span>
-            <button className="btn-ghost" onClick={downloadTemplate}>下载模板</button>
-            <button className="btn-ghost" onClick={() => fileInputRef.current?.click()}>导入 JSON</button>
+            {isAuthenticated && <><button className="btn-ghost" onClick={downloadTemplate}>下载模板</button><button className="btn-ghost" onClick={() => fileInputRef.current?.click()}>导入 JSON</button></>}
             <input ref={fileInputRef} type="file" accept="application/json,.json" className="hidden" onChange={handleFileChange} />
           </div>
         </div>
@@ -136,24 +136,24 @@ export default function HomeView({
 
                 {/* action footer */}
                 <div className="flex border-t border-line">
-                  <button
+                  {isAuthenticated && <button
                     className="flex-1 py-2.5 px-2 text-[13px] font-bold text-jade bg-surface-2 border-r border-line transition-colors hover:bg-jade-tint"
                     onClick={() => onOpenTrip(t.slug)}
                   >
                     进入旅行
-                  </button>
-                  <button
+                  </button>}
+                  {isAuthenticated && <button
                     className="flex-1 py-2.5 px-2 text-[13px] text-muted transition-colors hover:bg-surface-3 hover:text-ink-2 border-r border-line"
                     onClick={() => handleShare(t.slug)}
                   >
                     复制链接
-                  </button>
-                  <button
+                  </button>}
+                  {isAuthenticated && <button
                     className="flex-1 py-2.5 px-2 text-[13px] text-muted transition-colors hover:bg-danger-tint hover:text-danger"
                     onClick={() => handleDelete(t.slug)}
                   >
                     删除
-                  </button>
+                  </button>}
                 </div>
               </article>
             ))}

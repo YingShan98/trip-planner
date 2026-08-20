@@ -1,11 +1,13 @@
 import { useCallback, useEffect, useState } from 'react';
+import type { User } from '@supabase/supabase-js';
 import HomeView from './components/HomeView';
 import TripView from './components/trip/TripView';
 import Toast from './components/Toast';
 import NewTripModal from './components/modals/V2NewTripModal';
 import ConfigMissingModal from './components/modals/ConfigMissingModal';
 import AuthControl from './components/AuthControl';
-import { hasConfig } from './lib/supabase';
+import { hasConfig, sb } from './lib/supabase';
+import { isAnonymousUser } from './lib/guestAuth';
 
 function getSlugFromURL(): string | null {
   return new URL(location.href).searchParams.get('trip');
@@ -34,6 +36,13 @@ export default function App() {
   const [shareToken, setShareToken] = useState<string | null>(getShareTokenFromURL());
   const [showNewTrip, setShowNewTrip] = useState(false);
   const [showConfigMissing, setShowConfigMissing] = useState(!hasConfig);
+  const [user, setUser] = useState<User | null>(null);
+  const [authReady, setAuthReady] = useState(!hasConfig);
+
+  useEffect(() => {
+    if (!sb) return;
+    sb.auth.getUser().then(({ data }) => { setUser(isAnonymousUser(data.user) ? null : data.user); setAuthReady(true); });
+  }, []);
 
   useEffect(() => {
     const onPop = () => { setSlug(getSlugFromURL()); setReadOnly(getReadOnlyFromURL()); setShareToken(getShareTokenFromURL()); };
@@ -46,6 +55,7 @@ export default function App() {
 
   const handleNewTrip = () => {
     if (!hasConfig) { alert('请先配置 .env。'); return; }
+    if (!user) return;
     setShowNewTrip(true);
   };
 
@@ -66,16 +76,22 @@ export default function App() {
         </div>
 
         <div className="flex gap-2 items-center">
-          <button className="btn-ghost hidden sm:inline-flex" onClick={goHome}>我的旅行</button>
-          <AuthControl />
-          <button className="btn-primary" onClick={handleNewTrip}>＋ 新建行程</button>
+          {user && !slug && !shareToken && <button className="btn-ghost hidden sm:inline-flex" onClick={goHome}>我的旅行</button>}
+          <AuthControl onUserChange={(nextUser) => setUser(isAnonymousUser(nextUser) ? null : nextUser)} />
+          {user && <button className="btn-primary" onClick={handleNewTrip}>＋ 新建行程</button>}
         </div>
       </header>
 
-      {slug || shareToken ? (
+      {!authReady ? (
+        <main className="flex items-center justify-center min-h-[60vh] text-muted">正在检查登录状态…</main>
+      ) : slug || shareToken ? (
+        shareToken || user ? (
         <TripView slug={slug || ''} readOnly={readOnly} shareToken={shareToken} onHome={goHome} onDeleted={goHome} />
+        ) : (
+          <main className="content-gutter py-20 text-center"><h1 className="font-serif text-2xl text-jade-dark">这趟旅行需要分享链接</h1><p className="text-muted mt-2">请使用旅行拥有者发给你的有效链接查看。</p></main>
+        )
       ) : (
-        <HomeView onOpenTrip={openTrip} onNewTrip={handleNewTrip} />
+        <HomeView onOpenTrip={openTrip} onNewTrip={handleNewTrip} isAuthenticated={Boolean(user)} />
       )}
 
       {showNewTrip && (

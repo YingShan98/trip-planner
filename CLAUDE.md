@@ -9,6 +9,8 @@ npm run dev        # start dev server at http://localhost:5173/trip-planner/
 npm run build      # tsc -b && vite build → dist/
 npm run preview    # local preview of dist/
 npm run typecheck  # type-check without emitting
+npm run db:push    # apply pending Supabase migrations
+npm run db:reset   # reset local Supabase database and replay migrations
 ```
 
 No test suite exists. Type-checking (`npm run typecheck`) is the primary correctness gate.

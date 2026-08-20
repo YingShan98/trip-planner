@@ -10,7 +10,7 @@ export default function NotesSection({
     <section className="py-7">
       <div className="flex justify-between items-center gap-2.5 pb-3.5 mb-4 border-b-2 border-line flex-wrap">
         <h2 className="font-serif text-[19px] font-bold text-jade-dark">💬 留言板</h2>
-        <span className="text-muted text-[13px]">一起讨论，不需要注册账号</span>
+        <span className="text-muted text-[13px]">无需注册即可参与，留下你的显示名称</span>
       </div>
 
       {editUnlocked && (

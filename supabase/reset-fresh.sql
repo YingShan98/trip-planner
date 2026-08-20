@@ -29,6 +29,8 @@ drop table if exists public.transport_options cascade;
 drop table if exists public.budget_items cascade;
 drop table if exists public.trip_notes cascade;
 drop table if exists public.trip_shares cascade;
+drop table if exists public.trip_edit_events cascade;
+drop table if exists public.trip_guest_identities cascade;
 drop table if exists public.trip_members cascade;
 drop table if exists public.trips cascade;
 drop table if exists public.profiles cascade;
@@ -39,6 +41,8 @@ drop function if exists public.create_trip_share(uuid, text, text, timestamptz);
 drop function if exists public.revoke_trip_share(uuid);
 drop function if exists public.revoke_trip_shares(uuid);
 drop function if exists public.get_shared_trip_workspace(text);
+drop function if exists public.set_trip_guest_name(uuid, text, text);
+drop function if exists public.get_trip_edit_events(uuid);
 drop function if exists public.set_updated_at();
 
 commit;
