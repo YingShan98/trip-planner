@@ -140,6 +140,8 @@ seed/guangzhou-family-trip-2027.json
 
 `supabase/schema-v2.sql` 是新的规范化数据库结构，将行程、Day、活动、链接、住宿、交通、预算、Checklist、打包清单和留言拆成独立表。当前 React 界面仍使用旧版 `trip_documents` JSONB 结构；执行 v2 初始化后，需要后续前端迁移才能使用 v2 表。
 
+当前前端迁移已经开始使用 v2 表。若你已经先执行过旧版 `schema-v2.sql` 并完成过种子导入，请在 SQL Editor 额外执行 `supabase/migrate-v2-currency.sql`，再重新部署前端。
+
 ### 在现有 Supabase 项目中重置并导入示例
 
 1. 在 Supabase Dashboard → SQL Editor 执行 `supabase/reset-v2.sql`。这只删除 v2 表，不删除现有 v1 的 `trip_documents` 数据。

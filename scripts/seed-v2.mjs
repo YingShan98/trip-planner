@@ -117,7 +117,10 @@ const budget = (data.budget || []).map((item, index) => ({
 if (budget.length) fail('Create budget items', await client.from('budget_items').insert(budget));
 
 const notes = (data.notes || []).map((item) => ({
-  trip_id: trip.id, author_id: ownerId, author_name: item.author || '', content: item.text || '', created_at: item.ts || undefined,
+  trip_id: trip.id,
+  author_id: ownerId,
+  author_name: typeof item === 'string' ? '' : (item.author || ''),
+  content: typeof item === 'string' ? item : (item.text || ''),
 }));
 if (notes.length) fail('Create trip notes', await client.from('trip_notes').insert(notes));
 

@@ -2,8 +2,9 @@ import { useCallback, useEffect, useState } from 'react';
 import HomeView from './components/HomeView';
 import TripView from './components/trip/TripView';
 import Toast from './components/Toast';
-import NewTripModal from './components/modals/NewTripModal';
+import NewTripModal from './components/modals/V2NewTripModal';
 import ConfigMissingModal from './components/modals/ConfigMissingModal';
+import AuthControl from './components/AuthControl';
 import { hasConfig } from './lib/supabase';
 
 function getSlugFromURL(): string | null {
@@ -45,7 +46,7 @@ export default function App() {
   return (
     <div id="app">
       {/* ── Topbar ── */}
-      <header className="sticky top-0 z-50 flex justify-between items-center gap-3 page-gutter min-h-[68px] bg-white/92 backdrop-blur-md border-b border-line shadow-xs">
+      <header className="sticky top-0 z-50 flex justify-between items-center gap-3 page-gutter min-h-17 bg-white/92 backdrop-blur-md border-b border-line shadow-xs">
         <div className="flex items-center gap-2.5">
           <div className="w-10 h-10 bg-jade-dark rounded-sm grid place-items-center text-white text-[18px] shrink-0 shadow-sm" aria-hidden="true">
             ↗
@@ -60,6 +61,7 @@ export default function App() {
 
         <div className="flex gap-2 items-center">
           <button className="btn-ghost hidden sm:inline-flex" onClick={goHome}>我的旅行</button>
+          <AuthControl />
           <button className="btn-primary" onClick={handleNewTrip}>＋ 新建行程</button>
         </div>
       </header>

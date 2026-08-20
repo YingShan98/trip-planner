@@ -22,6 +22,8 @@ create table if not exists public.trips (
   start_date date,
   end_date date,
   home_currency text not null default 'MYR',
+  foreign_currency text not null default '',
+  exchange_rate numeric,
   visibility text not null default 'public' check (visibility in ('private', 'public', 'link')),
   created_at timestamptz not null default now(),
   updated_at timestamptz not null default now()

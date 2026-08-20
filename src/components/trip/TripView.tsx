@@ -3,9 +3,8 @@ import { sb } from '../../lib/supabase';
 import { toast } from '../../lib/toast';
 import { dateRange } from '../../lib/format';
 import { downloadJSON } from '../../lib/download';
-import { normalize } from '../../state';
-import { deleteTripBySlug } from '../../lib/tripActions';
-import type { TripRow, TripState } from '../../types';
+import { deleteV2Trip, loadV2Trip, saveV2Trip, type V2TripMeta } from '../../lib/v2Trip';
+import type { TripState } from '../../types';
 import { parseRate } from '../../lib/currency';
 import Dashboard from './Dashboard';
 import Checklist from './Checklist';
@@ -15,8 +14,7 @@ import CurrencySection from './CurrencySection';
 import TransportSection from './TransportSection';
 import BudgetSection from './BudgetSection';
 import NotesSection from './NotesSection';
-import SettingsModal from '../modals/SettingsModal';
-import ChangePasswordModal from '../modals/ChangePasswordModal';
+import V2SettingsModal from '../modals/V2SettingsModal';
 
 function buildShareLink(slug: string): string {
   const u = new URL(location.href);
@@ -30,15 +28,13 @@ export default function TripView({
 }: {
   slug: string; readOnly?: boolean; onHome: () => void; onDeleted: () => void;
 }) {
-  const [currentTrip, setCurrentTrip]       = useState<TripRow | null>(null);
+  const [currentTrip, setCurrentTrip]       = useState<V2TripMeta | null>(null);
   const [state, setState]                   = useState<TripState | null>(null);
   const [editUnlocked, setEditUnlockedState] = useState(false);
   const [syncStatus, setSyncStatus]         = useState('在线同步中');
   const [showSettings, setShowSettings]     = useState(false);
-  const [showChangePw, setShowChangePw]     = useState(false);
 
   const editUnlockedRef  = useRef(false);
-  const editPasswordRef  = useRef('');
   const stateRef         = useRef<TripState | null>(null);
   const saveTimerRef     = useRef<ReturnType<typeof setTimeout>>();
   const saveInFlightRef  = useRef(false);
@@ -53,14 +49,15 @@ export default function TripView({
     let cancelled = false;
     (async () => {
       if (!sb) return;
-      const { data, error } = await sb.from('trip_documents').select('*').eq('slug', slug).single();
-      if (cancelled) return;
-      if (error) { toast('无法打开旅行：' + error.message); return; }
-      const row = data as TripRow;
-      setCurrentTrip(row);
-      setState({ ...normalize(row.data), freeEdit: row.edit_requires_password === false });
+      try {
+        const workspace = await loadV2Trip(slug);
+        if (cancelled) return;
+        setCurrentTrip(workspace.trip);
+        setState(workspace.state);
+      } catch (error) {
+        if (!cancelled) toast('无法打开旅行：' + (error as Error).message);
+      }
       setEditUnlocked(false);
-      editPasswordRef.current = '';
       setSyncStatus('在线同步中');
     })();
     return () => { cancelled = true; };
@@ -71,15 +68,22 @@ export default function TripView({
   useEffect(() => {
     const client = sb;
     if (!client) return;
+    const reload = async () => {
+      if (editUnlockedRef.current && saveInFlightRef.current) return;
+      try {
+        const workspace = await loadV2Trip(slug);
+        setCurrentTrip(workspace.trip);
+        setState(workspace.state);
+        toast('行程已更新');
+      } catch (error) { toast('同步失败：' + (error as Error).message); }
+    };
     const channel = client
-      .channel('trip:' + slug)
-      .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'trip_documents', filter: `slug=eq.${slug}` }, (payload) => {
-        if (editUnlockedRef.current && saveInFlightRef.current) return;
-        const row = payload.new as TripRow;
-        setCurrentTrip(row);
-        setState({ ...normalize(row.data), freeEdit: row.edit_requires_password === false });
-        toast('🔄 行程已更新');
-      })
+      .channel('v2-trip:' + slug)
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'trips', filter: `slug=eq.${slug}` }, reload)
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'trip_days' }, reload)
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'activities' }, reload)
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'budget_items' }, reload)
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'trip_notes' }, reload)
       .subscribe();
     return () => { client.removeChannel(channel); };
   }, [slug]);
@@ -91,10 +95,8 @@ export default function TripView({
     saveInFlightRef.current = true;
     setSyncStatus('保存中…');
     try {
-      const { data, error } = await sb.rpc('save_trip', {
-        p_slug: slug, p_password: editPasswordRef.current, p_data: stateRef.current,
-      });
-      if (error || data !== true) throw new Error(error?.message || '保存失败');
+      if (!stateRef.current) throw new Error('没有可保存的行程');
+      await saveV2Trip(slug, stateRef.current);
       setSyncStatus('已同步');
       toast('已同步');
     } catch (e) {
@@ -123,22 +125,16 @@ export default function TripView({
   }, []);
 
   const toggleEdit = async () => {
-    if (editUnlocked) { setEditUnlocked(false); editPasswordRef.current = ''; return; }
-    if (stateRef.current?.freeEdit) {
-      editPasswordRef.current = '';
-      setEditUnlocked(true);
-      toast('已进入编辑模式（自由编辑）');
-      return;
-    }
-    const pw = prompt('请输入该旅行的编辑密码');
-    if (!pw || !sb) return;
-    const { data, error } = await sb.rpc('verify_trip_password', { p_slug: slug, p_password: pw });
-    if (error) { toast(error.message); return; }
-    if (data === true) { editPasswordRef.current = pw; setEditUnlocked(true); toast('已进入编辑模式'); }
-    else toast('编辑密码不正确');
+    if (editUnlocked) { setEditUnlocked(false); return; }
+    if (!sb || readOnly) return;
+    const { data, error } = await sb.auth.getUser();
+    if (error || !data.user) { toast('请先登录后编辑'); return; }
+    if (data.user.id !== currentTrip?.owner_id) { toast('只有旅行拥有者可以编辑'); return; }
+    setEditUnlocked(true);
+    toast('已进入编辑模式');
   };
 
-  const handleDeleteCurrent = async () => { if (await deleteTripBySlug(slug)) onDeleted(); };
+  const handleDeleteCurrent = async () => { if (await deleteV2Trip(slug)) onDeleted(); };
 
   const copyShareLink = async () => {
     await navigator.clipboard.writeText(buildShareLink(slug));
@@ -148,7 +144,7 @@ export default function TripView({
   const exportJSON = () => {
     if (!currentTrip || !state) return;
     downloadJSON((slug || 'trip') + '.json', {
-      meta: { title: currentTrip.title, destination: currentTrip.destination, start_date: currentTrip.start_date, end_date: currentTrip.end_date, currency: currentTrip.currency, description: currentTrip.description },
+    meta: { title: currentTrip.title, destination: currentTrip.destination, start_date: currentTrip.start_date, end_date: currentTrip.end_date, currency: currentTrip.home_currency, description: currentTrip.description },
       data: state,
     });
   };
@@ -194,7 +190,7 @@ export default function TripView({
 
           <div className="flex flex-wrap gap-2 mt-4">
             <span className="pill bg-white/13 border-white/22 text-white/90 hero-pill">
-              💰 {currentTrip.currency || 'MYR'}
+              💰 {currentTrip.home_currency || 'MYR'}
               {state.foreignCurrency
                 ? ` · ${state.foreignCurrency}${parseRate(state.exchangeRate) ? ` @ ${parseRate(state.exchangeRate)}` : ' (未设汇率)'}`
                 : ''}
@@ -277,9 +273,9 @@ export default function TripView({
         <div id="prepare" className="scroll-mt-32"><Checklist state={state} editUnlocked={editUnlocked} mutate={mutate} /></div>
         <div id="itinerary" className="scroll-mt-32"><DaysSection state={state} editUnlocked={editUnlocked} mutate={mutate} mutateNoSave={mutateNoSave} /></div>
         <div id="stay" className="scroll-mt-32"><HotelsSection state={state} editUnlocked={editUnlocked} mutate={mutate} /></div>
-        <div id="currency" className="scroll-mt-32"><CurrencySection state={state} homeCurrency={currentTrip.currency} mutate={mutate} /></div>
-        <div id="transport" className="scroll-mt-32"><TransportSection state={state} editUnlocked={editUnlocked} mutate={mutate} homeCurrency={currentTrip.currency} /></div>
-        <div id="budget" className="scroll-mt-32"><BudgetSection state={state} editUnlocked={editUnlocked} mutate={mutate} currency={currentTrip.currency} /></div>
+        <div id="currency" className="scroll-mt-32"><CurrencySection state={state} homeCurrency={currentTrip.home_currency} mutate={mutate} /></div>
+        <div id="transport" className="scroll-mt-32"><TransportSection state={state} editUnlocked={editUnlocked} mutate={mutate} homeCurrency={currentTrip.home_currency} /></div>
+        <div id="budget" className="scroll-mt-32"><BudgetSection state={state} editUnlocked={editUnlocked} mutate={mutate} currency={currentTrip.home_currency} /></div>
         <div id="notes" className="scroll-mt-32"><NotesSection state={state} editUnlocked={editUnlocked} mutate={mutate} /></div>
       </div>
 
@@ -294,20 +290,10 @@ export default function TripView({
       )}
 
       {showSettings && (
-        <SettingsModal
-          trip={currentTrip} slug={slug} editUnlocked={editUnlocked} editPassword={editPasswordRef.current}
-          state={state} mutate={mutate}
+        <V2SettingsModal
+          trip={currentTrip}
           onClose={() => setShowSettings(false)}
-          onSaved={(meta) => setCurrentTrip((prev) => (prev ? { ...prev, ...meta } : prev))}
-          onPermissionChanged={(requiresPassword) => setState((prev) => (prev ? { ...prev, freeEdit: !requiresPassword } : prev))}
-          onChangePassword={() => { setShowSettings(false); setShowChangePw(true); }}
-        />
-      )}
-      {showChangePw && (
-        <ChangePasswordModal
-          slug={slug}
-          onClose={() => setShowChangePw(false)}
-          onChanged={(newPw) => { editPasswordRef.current = newPw; }}
+          onSaved={(changes) => setCurrentTrip((prev) => (prev ? { ...prev, ...changes } : prev))}
         />
       )}
     </main>

@@ -4,10 +4,11 @@ import { sb } from '../lib/supabase';
 import { toast } from '../lib/toast';
 import { dateRange } from '../lib/format';
 import { downloadJSON } from '../lib/download';
-import { copyTripLink, deleteTripBySlug } from '../lib/tripActions';
+import { copyTripLink } from '../lib/tripActions';
+import { deleteV2Trip } from '../lib/v2Trip';
 import { normalize, templateState } from '../state';
 import type { ImportedTripMeta, TripListRow, TripState } from '../types';
-import NewTripModal from './modals/NewTripModal';
+import NewTripModal from './modals/V2NewTripModal';
 
 export default function HomeView({
   onOpenTrip, onNewTrip,
@@ -22,17 +23,19 @@ export default function HomeView({
   const loadTrips = async () => {
     if (!sb) { setTrips([]); return; }
     const { data, error } = await sb
-      .from('trip_documents')
-      .select('id,slug,title,destination,start_date,end_date,currency,description,updated_at')
+      .from('trips')
+      .select('id,slug,title,destination,start_date,end_date,home_currency,description,updated_at')
       .order('updated_at', { ascending: false });
     if (error) { toast('无法读取旅行列表：' + error.message); return; }
-    setTrips(data || []);
+    setTrips((data || []).map((trip) => ({ ...trip, currency: trip.home_currency })) as TripListRow[]);
   };
 
   useEffect(() => { loadTrips(); }, []);
 
   const handleDelete = async (slug: string) => {
-    if (await deleteTripBySlug(slug)) await loadTrips();
+    if (!confirm('删除这趟旅行？此操作不可恢复。')) return;
+    try { await deleteV2Trip(slug); toast('旅行已删除'); await loadTrips(); }
+    catch (error) { toast('删除失败：' + (error as Error).message); }
   };
 
   const downloadTemplate = () => {
