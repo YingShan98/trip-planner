@@ -59,23 +59,30 @@ export default function TransportSection({
                 /> : x.price && <div className="rich-field"><span className="rich-label">计价方式</span><MarkdownText text={x.price} /></div>}
 
               {/* Amount + currency row */}
-              <div className="flex gap-1.5">
-                <input
-                  className="inp editable flex-1"
-                  type="number"
-                  value={x.amount}
-                  placeholder="金额"
-                  onChange={(e) => mutate((d) => { d.transport[i].amount = e.target.value; })}
-                />
-                <select
-                  className="inp editable w-auto"
-                  value={x.currency}
-                  onChange={(e) => mutate((d) => { d.transport[i].currency = e.target.value as 'home' | 'foreign'; })}
-                >
-                  <option value="home">{home}</option>
-                  <option value="foreign">{foreign}</option>
-                </select>
-              </div>
+              {editUnlocked ? (
+                <div className="flex gap-1.5">
+                  <input
+                    className="inp editable flex-1"
+                    type="number"
+                    value={x.amount}
+                    placeholder="金额"
+                    onChange={(e) => mutate((d) => { d.transport[i].amount = e.target.value; })}
+                  />
+                  <select
+                    className="inp editable w-auto"
+                    value={x.currency}
+                    onChange={(e) => mutate((d) => { d.transport[i].currency = e.target.value as 'home' | 'foreign'; })}
+                  >
+                    <option value="home">{home}</option>
+                    <option value="foreign">{foreign}</option>
+                  </select>
+                </div>
+              ) : x.amount !== '' && x.amount !== null && !Number.isNaN(Number(x.amount)) ? (
+                <div className="rich-field">
+                  <span className="rich-label">金额</span>
+                  <span className="text-[14px] font-semibold text-jade-dark">{formatMoney(Number(x.amount), x.currency === 'home' ? home : foreign)}</span>
+                </div>
+              ) : null}
 
               {/* Converted amount */}
               {x.amount !== '' && x.amount !== null && !Number.isNaN(Number(x.amount)) && (() => {

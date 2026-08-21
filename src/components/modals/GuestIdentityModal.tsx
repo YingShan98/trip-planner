@@ -1,29 +1,22 @@
-import { useRef, useState } from 'react';
+import { useState } from 'react';
 import HCaptcha from '@hcaptcha/react-hcaptcha';
 import Modal from '../Modal';
-import { toast } from '../../lib/toast';
 
-export default function GuestIdentityModal({ onClose, onContinue, initialName }: {
+export default function GuestIdentityModal({ onClose, onContinue, initialName, requiresPassword }: {
   onClose: () => void;
-  onContinue: (name: string, captchaToken: string) => void;
+  onContinue: (name: string, captchaToken: string, password?: string) => void;
   initialName?: string;
+  requiresPassword?: boolean;
 }) {
   const [name, setName] = useState(initialName || '');
-  const [busy, setBusy] = useState(false);
-  const captchaRef = useRef<HCaptcha>(null);
+  const [password, setPassword] = useState('');
+  const [captchaToken, setCaptchaToken] = useState<string | null>(null);
 
-  const continueAsGuest = async () => {
-    if (!name.trim() || busy) return;
-    setBusy(true);
-    try {
-      if (!import.meta.env.VITE_HCAPTCHA_SITE_KEY) throw new Error('未配置 hCaptcha site key');
-      const result = await captchaRef.current?.execute({ async: true });
-      if (!result?.response) throw new Error('请完成 hCaptcha 验证');
-      onContinue(name.trim(), result.response);
-    } catch (error) {
-      setBusy(false);
-      toast((error as Error).message);
-    }
+  const ready = Boolean(name.trim() && captchaToken && (!requiresPassword || password));
+
+  const continueAsGuest = () => {
+    if (!ready || !captchaToken) return;
+    onContinue(name.trim(), captchaToken, requiresPassword ? password : undefined);
   };
 
   return (
@@ -39,12 +32,34 @@ export default function GuestIdentityModal({ onClose, onContinue, initialName }:
           placeholder="例如：Mei 阿姨"
           value={name}
           onChange={(event) => setName(event.target.value)}
-          onKeyDown={(event) => { if (event.key === 'Enter') void continueAsGuest(); }}
+          onKeyDown={(event) => { if (event.key === 'Enter') continueAsGuest(); }}
         />
       </div>
-      <HCaptcha ref={captchaRef} sitekey={import.meta.env.VITE_HCAPTCHA_SITE_KEY || 'missing-site-key'} size="invisible" />
+      {requiresPassword && (
+        <div className="field mt-4">
+          <label>编辑密码</label>
+          <input
+            className="inp"
+            type="password"
+            placeholder="向旅行拥有者获取密码"
+            value={password}
+            onChange={(event) => setPassword(event.target.value)}
+            onKeyDown={(event) => { if (event.key === 'Enter') continueAsGuest(); }}
+          />
+        </div>
+      )}
+      <div className="field mt-4">
+        <label>安全验证</label>
+        <HCaptcha
+          sitekey={import.meta.env.VITE_HCAPTCHA_SITE_KEY || 'missing-site-key'}
+          size="normal"
+          onVerify={(token) => setCaptchaToken(token)}
+          onExpire={() => setCaptchaToken(null)}
+          onError={() => setCaptchaToken(null)}
+        />
+      </div>
       <div className="flex justify-end mt-5 pt-4 border-t border-line">
-        <button className="btn-primary" disabled={!name.trim() || busy} onClick={() => void continueAsGuest()}>{busy ? '验证中…' : '开始参与'}</button>
+        <button className="btn-primary" disabled={!ready} onClick={continueAsGuest}>开始参与</button>
       </div>
     </Modal>
   );

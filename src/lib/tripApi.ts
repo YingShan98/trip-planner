@@ -23,6 +23,7 @@ export interface TripWorkspace {
   trip: TripMeta;
   state: TripState;
   sharePermission?: 'view' | 'edit';
+  requiresEditPassword?: boolean;
 }
 
 function requireClient() {
@@ -35,9 +36,11 @@ function result<T>(label: string, response: { data: T | null; error: { message: 
   return response.data as T;
 }
 
+const TRIP_META_COLUMNS = 'id,slug,title,destination,description,start_date,end_date,home_currency,foreign_currency,exchange_rate,visibility,owner_id,created_at,updated_at';
+
 export async function loadTrip(slug: string): Promise<TripWorkspace> {
   const client = requireClient();
-  const trip = result('读取旅行', await client.from('trips').select('*').eq('slug', slug).single()) as TripMeta;
+  const trip = result('读取旅行', await client.from('trips').select(TRIP_META_COLUMNS).eq('slug', slug).single()) as TripMeta;
   const days = result('读取行程日', await client.from('trip_days').select('*').eq('trip_id', trip.id).order('day_number')) as Array<Record<string, unknown>>;
   const dayIds = days.map((day) => day.id as string);
   const activities = dayIds.length
@@ -98,9 +101,9 @@ export async function loadTrip(slug: string): Promise<TripWorkspace> {
   return { trip, state };
 }
 
-async function saveTripByRpc(tripId: string, state: TripState, tokenHash?: string): Promise<void> {
+async function saveTripByRpc(tripId: string, state: TripState, tokenHash?: string, password?: string): Promise<void> {
   const client = requireClient();
-  const response = await client.rpc('save_trip_workspace', { p_trip_id: tripId, p_state: state, p_token_hash: tokenHash || null });
+  const response = await client.rpc('save_trip_workspace', { p_trip_id: tripId, p_state: state, p_token_hash: tokenHash || null, p_password: password || null });
   if (response.error || response.data !== true) throw new Error(response.error?.message || '保存失败');
 }
 
@@ -110,14 +113,28 @@ export async function saveTrip(slug: string, state: TripState): Promise<void> {
   await saveTripByRpc(trip.id, state);
 }
 
-export async function saveSharedTrip(token: string, state: TripState): Promise<void> {
+export async function saveSharedTrip(token: string, state: TripState, password?: string): Promise<void> {
   const client = requireClient();
   const tokenHash = await sha256Hex(token);
   const workspace = await client.rpc('get_shared_trip_workspace', { p_token_hash: tokenHash });
   if (workspace.error || !workspace.data) throw new Error(workspace.error?.message || '分享链接无效、已撤销或已过期');
   const trip = workspace.data as TripWorkspace;
   if (trip.sharePermission !== 'edit') throw new Error('此分享链接没有编辑权限');
-  await saveTripByRpc(trip.trip.id, state, tokenHash);
+  await saveTripByRpc(trip.trip.id, state, tokenHash, password);
+}
+
+export async function verifyEditPassword(token: string, password: string): Promise<boolean> {
+  const client = requireClient();
+  const tokenHash = await sha256Hex(token);
+  const response = await client.rpc('verify_trip_edit_password', { p_token_hash: tokenHash, p_password: password });
+  if (response.error) throw new Error(`验证密码：${response.error.message}`);
+  return response.data === true;
+}
+
+export async function setTripEditPassword(tripId: string, password: string): Promise<void> {
+  const client = requireClient();
+  const response = await client.rpc('set_trip_edit_password', { p_trip_id: tripId, p_password: password || null });
+  if (response.error || response.data !== true) throw new Error(response.error?.message || '密码设置失败');
 }
 
 export async function createTrip(input: { slug: string; title: string; destination: string; start_date: string | null; end_date: string | null; home_currency: string; description: string; state: TripState }) {

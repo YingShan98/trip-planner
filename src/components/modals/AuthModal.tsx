@@ -11,6 +11,7 @@ export default function AuthModal({ onClose }: { onClose: () => void }) {
   const [mode, setMode] = useState<'signIn' | 'signUp'>('signIn');
   const [busy, setBusy] = useState(false);
   const [guestSession, setGuestSession] = useState(false);
+  const [captchaToken, setCaptchaToken] = useState<string | null>(null);
   const captchaRef = useRef<HCaptcha>(null);
 
   useEffect(() => {
@@ -22,27 +23,23 @@ export default function AuthModal({ onClose }: { onClose: () => void }) {
       toast('请输入邮箱和至少6位密码');
       return;
     }
-    setBusy(true);
-    let captchaToken: string | undefined;
-    if (!guestSession) {
-      try {
-        if (!import.meta.env.VITE_HCAPTCHA_SITE_KEY) throw new Error('未配置 hCaptcha site key');
-        const result = await captchaRef.current?.execute({ async: true });
-        if (!result?.response) throw new Error('请完成 hCaptcha 验证');
-        captchaToken = result.response;
-      } catch (error) {
-        setBusy(false);
-        toast((error as Error).message);
-        return;
-      }
+    if (!guestSession && !captchaToken) {
+      toast('请先完成下方的安全验证');
+      return;
     }
+    setBusy(true);
     const response = mode === 'signIn'
-      ? await sb.auth.signInWithPassword({ email: email.trim(), password, options: { captchaToken } })
+      ? await sb.auth.signInWithPassword({ email: email.trim(), password, options: { captchaToken: captchaToken || undefined } })
       : guestSession
         ? await sb.auth.updateUser({ email: email.trim(), password })
-        : await sb.auth.signUp({ email: email.trim(), password, options: { captchaToken } });
+        : await sb.auth.signUp({ email: email.trim(), password, options: { captchaToken: captchaToken || undefined } });
     setBusy(false);
-    if (response.error) { toast(response.error.message); return; }
+    if (response.error) {
+      captchaRef.current?.resetCaptcha();
+      setCaptchaToken(null);
+      toast(response.error.message);
+      return;
+    }
     toast(mode === 'signIn' ? '已登录' : guestSession ? '访客身份已升级，请检查邮箱确认' : '注册成功，请检查邮箱确认');
     onClose();
   };
@@ -55,12 +52,26 @@ export default function AuthModal({ onClose }: { onClose: () => void }) {
         <div className="field"><label>邮箱</label><input className="inp" type="email" autoComplete="email" value={email} onChange={(e) => setEmail(e.target.value)} /></div>
         <div className="field"><label>密码</label><input className="inp" type="password" autoComplete={mode === 'signIn' ? 'current-password' : 'new-password'} value={password} onChange={(e) => setPassword(e.target.value)} onKeyDown={(e) => e.key === 'Enter' && submit()} /></div>
       </div>
-      <HCaptcha ref={captchaRef} sitekey={import.meta.env.VITE_HCAPTCHA_SITE_KEY || 'missing-site-key'} size="invisible" />
+      {!guestSession && (
+        <div className="field mt-4">
+          <label>安全验证</label>
+          <HCaptcha
+            ref={captchaRef}
+            sitekey={import.meta.env.VITE_HCAPTCHA_SITE_KEY || 'missing-site-key'}
+            size="normal"
+            onVerify={(token) => setCaptchaToken(token)}
+            onExpire={() => setCaptchaToken(null)}
+            onError={() => setCaptchaToken(null)}
+          />
+        </div>
+      )}
       <div className="flex items-center justify-between gap-3 mt-5 pt-4 border-t border-line">
         <button className="text-jade text-[13px] font-semibold hover:underline" onClick={() => setMode(mode === 'signIn' ? 'signUp' : 'signIn')}>
           {mode === 'signIn' ? '还没有账户？注册' : guestSession ? '使用其他账户登录' : '已有账户？登录'}
         </button>
-        <button className="btn-primary" disabled={busy} onClick={submit}>{busy ? '处理中…' : mode === 'signIn' ? '登录' : '注册'}</button>
+        <button className="btn-primary" disabled={busy || (!guestSession && !captchaToken)} onClick={submit}>
+          {busy ? '处理中…' : mode === 'signIn' ? '登录' : '注册'}
+        </button>
       </div>
     </Modal>
   );

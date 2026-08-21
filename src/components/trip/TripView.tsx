@@ -4,7 +4,7 @@ import { toast } from '../../lib/toast';
 import { confirmDialog } from '../../lib/confirm';
 import { dateRange } from '../../lib/format';
 import { downloadJSON } from '../../lib/download';
-import { createShare, deleteTrip, getTripRole, loadSharedTrip, loadTrip, saveSharedTrip, saveTrip, type TripMeta } from '../../lib/tripApi';
+import { createShare, deleteTrip, getTripRole, loadSharedTrip, loadTrip, saveSharedTrip, saveTrip, verifyEditPassword, type TripMeta } from '../../lib/tripApi';
 import { ensureGuestSession, getTripEditEvents, isAnonymousUser, setGuestName, type TripEditEvent } from '../../lib/guestAuth';
 import type { TripState } from '../../types';
 import { parseRate } from '../../lib/currency';
@@ -52,6 +52,8 @@ export default function TripView({
   const [showTop, setShowTop] = useState(false);
   const [showGuestIdentity, setShowGuestIdentity] = useState(false);
   const [guestName, setGuestNameState] = useState(() => localStorage.getItem(`trip-guest-name:${shareToken || ''}`) || '');
+  const [requiresEditPassword, setRequiresEditPassword] = useState(false);
+  const [editPassword, setEditPasswordState] = useState(() => sessionStorage.getItem(`trip-edit-pw:${shareToken || ''}`) || '');
   const [editEvents, setEditEvents] = useState<TripEditEvent[] | null>(null);
   const [hasUnsavedChanges, setHasUnsavedChanges] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
@@ -79,6 +81,7 @@ export default function TripView({
         setCurrentTrip(workspace.trip);
         setState(workspace.state);
         setSharePermission(workspace.sharePermission || null);
+        setRequiresEditPassword(Boolean(workspace.requiresEditPassword));
         if (!shareToken) {
           const { data: userData } = await sb.auth.getUser();
           setRole(userData.user ? await getTripRole(workspace.trip.id) : null);
@@ -93,10 +96,17 @@ export default function TripView({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [slug, shareToken]);
 
-  /* ── Realtime ── */
+  /* ── Realtime ──
+     `save_trip_workspace` (the only writer for trip_days/activities/budget_items/trip_notes,
+     see supabase/schema.sql) always bumps `trips.updated_at` first, so subscribing to this
+     trip's `trips` row alone is enough to catch every save — child tables can't be filtered
+     by trip here (activities has no trip_id column), so watching them unfiltered would fire
+     reload() for every trip in the database, not just this one. Filtering by id rather than
+     slug also covers share-link viewers, whose URL has no `slug` to filter on. */
   useEffect(() => {
     const client = sb;
-    if (!client) return;
+    const tripId = currentTrip?.id;
+    if (!client || !tripId) return;
     const reload = async () => {
       if (editUnlockedRef.current && (saveInFlightRef.current || hasUnsavedChangesRef.current)) return;
       try {
@@ -107,15 +117,11 @@ export default function TripView({
       } catch (error) { toast('同步失败：' + (error as Error).message); }
     };
     const channel = client
-      .channel('trip:' + slug)
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'trips', filter: `slug=eq.${slug}` }, reload)
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'trip_days' }, reload)
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'activities' }, reload)
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'budget_items' }, reload)
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'trip_notes' }, reload)
+      .channel('trip:' + tripId)
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'trips', filter: `id=eq.${tripId}` }, reload)
       .subscribe();
     return () => { client.removeChannel(channel); };
-  }, [slug, shareToken]);
+  }, [slug, shareToken, currentTrip?.id]);
 
   /* ── Save ── */
   const saveRemote = useCallback(async () => {
@@ -126,7 +132,7 @@ export default function TripView({
     setSyncStatus('保存中…');
     try {
       if (!stateRef.current) throw new Error('没有可保存的行程');
-      if (shareToken) await saveSharedTrip(shareToken, stateRef.current);
+      if (shareToken) await saveSharedTrip(shareToken, stateRef.current, editPassword || undefined);
       else await saveTrip(slug, stateRef.current);
       setHasUnsavedChanges(false);
       setSyncStatus('已同步');
@@ -139,7 +145,7 @@ export default function TripView({
       setIsSaving(false);
       if (savePendingRef.current) { savePendingRef.current = false; saveRemote(); }
     }
-  }, [hasUnsavedChanges, isSaving, shareToken, slug]);
+  }, [hasUnsavedChanges, isSaving, shareToken, slug, editPassword]);
 
   const mutate = useCallback((fn: (draft: TripState) => void) => {
     setState((prev) => { if (!prev) return prev; const next = structuredClone(prev); fn(next); return next; });
@@ -162,7 +168,9 @@ export default function TripView({
     if (shareToken && sharePermission === 'edit') {
       try {
         const guest = await ensureGuestSession();
-        if (isAnonymousUser(guest) && !guestName) { setShowGuestIdentity(true); return; }
+        const needsIdentity = isAnonymousUser(guest) && !guestName;
+        const needsPassword = requiresEditPassword && !editPassword;
+        if (needsIdentity || needsPassword) { setShowGuestIdentity(true); return; }
       } catch (error) { toast('无法开启访客编辑：' + (error as Error).message); return; }
     }
     if (!shareToken && role !== 'owner' && role !== 'editor') { toast('请先登录并获得这趟旅行的编辑权限'); return; }
@@ -170,13 +178,19 @@ export default function TripView({
     toast('已进入编辑模式');
   };
 
-  const continueAsGuest = async (name: string, captchaToken: string) => {
+  const continueAsGuest = async (name: string, captchaToken: string, password?: string) => {
     if (!shareToken || !currentTrip) return;
     try {
       await ensureGuestSession(captchaToken);
       await setGuestName(currentTrip.id, shareToken, name);
       localStorage.setItem(`trip-guest-name:${shareToken}`, name);
       setGuestNameState(name);
+      if (requiresEditPassword && !editPassword) {
+        const ok = await verifyEditPassword(shareToken, password || '');
+        if (!ok) { toast('密码不正确'); return; }
+        sessionStorage.setItem(`trip-edit-pw:${shareToken}`, password || '');
+        setEditPasswordState(password || '');
+      }
       setShowGuestIdentity(false);
       setEditUnlocked(true);
       toast(`已作为「${name}」进入编辑模式`);
@@ -449,10 +463,15 @@ export default function TripView({
           <div className="field"><label>权限</label><select className="inp" value={shareMode} onChange={(e) => setShareMode(e.target.value as 'view' | 'edit')}><option value="view">只读查看</option><option value="edit">可以编辑</option></select></div>
           {shareMode === 'edit' && <div className="field"><label>有效期</label><select className="inp" value={shareExpiry} onChange={(e) => setShareExpiry(e.target.value)}><option value="1">1天</option><option value="7">7天</option><option value="30">30天</option><option value="0">不过期，直到撤销</option></select></div>}
         </div>
+        {shareMode === 'edit' && (
+          <p className="text-muted text-[12.5px] mt-3">
+            打开链接的人只需填写名字即可编辑，无需登录。想额外加一道密码？前往「旅行设置 → 编辑密码」设置。
+          </p>
+        )}
         <div className="flex justify-end mt-5 pt-4 border-t border-line"><button className="btn-primary" onClick={createShareLink}>生成并复制链接</button></div>
       </Modal>}
 
-      {showGuestIdentity && <GuestIdentityModal initialName={guestName} onClose={() => setShowGuestIdentity(false)} onContinue={continueAsGuest} />}
+      {showGuestIdentity && <GuestIdentityModal initialName={guestName} requiresPassword={requiresEditPassword && !editPassword} onClose={() => setShowGuestIdentity(false)} onContinue={continueAsGuest} />}
       {editEvents && <EditHistoryModal events={editEvents} onClose={() => setEditEvents(null)} />}
     </main>
   );

@@ -2,7 +2,7 @@ import { useState } from 'react';
 import { sb } from '../../lib/supabase';
 import { toast } from '../../lib/toast';
 import { confirmDialog } from '../../lib/confirm';
-import { revokeShares, type TripMeta } from '../../lib/tripApi';
+import { revokeShares, setTripEditPassword, type TripMeta } from '../../lib/tripApi';
 import Modal from '../Modal';
 
 export default function SettingsModal({ trip, onClose, onSaved }: {
@@ -19,6 +19,8 @@ export default function SettingsModal({ trip, onClose, onSaved }: {
   const [end, setEnd] = useState(trip.end_date || '');
   const [description, setDescription] = useState(trip.description);
   const [revoking, setRevoking] = useState(false);
+  const [editPassword, setEditPassword] = useState('');
+  const [savingPassword, setSavingPassword] = useState(false);
 
   const save = async () => {
     if (!sb) return;
@@ -31,6 +33,17 @@ export default function SettingsModal({ trip, onClose, onSaved }: {
     onSaved({ title: title.trim(), destination: destination.trim(), home_currency: currency.trim() || 'MYR', foreign_currency: foreignCurrency.trim(), exchange_rate: exchangeRate === '' ? null : Number(exchangeRate), start_date: start || null, end_date: end || null, description });
     toast('旅行设置已更新');
     onClose();
+  };
+
+  const handleSaveEditPassword = async () => {
+    if (editPassword && editPassword.trim().length < 4) { toast('密码至少需要 4 位'); return; }
+    setSavingPassword(true);
+    try {
+      await setTripEditPassword(trip.id, editPassword.trim());
+      toast(editPassword.trim() ? '编辑密码已更新' : '编辑密码已移除');
+      setEditPassword('');
+    } catch (error) { toast('密码更新失败：' + (error as Error).message); }
+    finally { setSavingPassword(false); }
   };
 
   const handleRevokeShares = async () => {
@@ -55,6 +68,14 @@ export default function SettingsModal({ trip, onClose, onSaved }: {
         <div className="field col-span-2"><label>简介</label><textarea className="inp min-h-[100px] resize-y" value={description} onChange={(e) => setDescription(e.target.value)} /></div>
       </div>
       <div className="flex justify-end mt-5 pt-4 border-t border-line"><button className="btn-primary" onClick={save}>保存设置</button></div>
+      <div className="mt-4 pt-4 border-t border-line">
+        <p className="text-[12px] font-semibold text-muted mb-2">编辑密码</p>
+        <p className="text-muted text-[12.5px] mb-2">为「可编辑」分享链接额外加一道密码。同行者仍无需登录，只需填写名字和这个密码。留空并保存可移除密码。</p>
+        <div className="flex gap-2">
+          <input className="inp flex-1" type="password" placeholder="留空 = 不需要密码" value={editPassword} onChange={(e) => setEditPassword(e.target.value)} />
+          <button className="btn-ghost shrink-0" disabled={savingPassword} onClick={handleSaveEditPassword}>{savingPassword ? '保存中…' : '更新密码'}</button>
+        </div>
+      </div>
       <div className="mt-4 pt-4 border-t border-line">
         <p className="text-[12px] font-semibold text-muted mb-2">安全分享</p>
         <button className="btn-danger" disabled={revoking} onClick={handleRevokeShares}>{revoking ? '撤销中…' : '撤销所有分享链接'}</button>

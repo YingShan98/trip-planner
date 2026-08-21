@@ -277,7 +277,8 @@ end $$;
 -- Fresh-install compatibility: these statements also upgrade an older v2 database.
 alter table public.trips
   add column if not exists foreign_currency text not null default '',
-  add column if not exists exchange_rate numeric;
+  add column if not exists exchange_rate numeric,
+  add column if not exists edit_password_hash text;
 
 -- Role helper used by RLS and transactional RPCs.
 create or replace function public.trip_role(p_trip_id uuid)
@@ -346,13 +347,17 @@ end $$;
 drop function if exists public.save_trip_workspace(uuid, jsonb);
 drop function if exists public.save_trip_workspace(uuid, jsonb, text);
 drop function if exists public.save_trip_workspace(uuid, jsonb, text, text);
-create or replace function public.save_trip_workspace(p_trip_id uuid, p_state jsonb, p_token_hash text default null)
+create or replace function public.save_trip_workspace(p_trip_id uuid, p_state jsonb, p_token_hash text default null, p_password text default null)
 returns boolean language plpgsql security definer set search_path = public, extensions
 as $$
-declare v_role text; v_day jsonb; v_activity jsonb; v_link jsonb; v_hotel jsonb; v_index integer; v_day_id uuid; v_activity_id uuid; v_hotel_id uuid; v_home_currency text; v_foreign_currency text;
+declare v_role text; v_day jsonb; v_activity jsonb; v_link jsonb; v_hotel jsonb; v_index integer; v_day_id uuid; v_activity_id uuid; v_hotel_id uuid; v_home_currency text; v_foreign_currency text; v_edit_password_hash text;
 begin
   v_role := public.trip_role(p_trip_id);
-  if v_role not in ('owner', 'editor') and exists (select 1 from public.trip_shares where trip_id = p_trip_id and token_hash = p_token_hash and permission = 'edit' and revoked_at is null and (expires_at is null or expires_at > now())) then v_role := 'editor'; end if;
+  if v_role not in ('owner', 'editor') and exists (select 1 from public.trip_shares where trip_id = p_trip_id and token_hash = p_token_hash and permission = 'edit' and revoked_at is null and (expires_at is null or expires_at > now())) then
+    select edit_password_hash into v_edit_password_hash from public.trips where id = p_trip_id;
+    if v_edit_password_hash is not null and (p_password is null or crypt(p_password, v_edit_password_hash) <> v_edit_password_hash) then return false; end if;
+    v_role := 'editor';
+  end if;
   if v_role not in ('owner', 'editor') or p_state is null or jsonb_typeof(p_state) <> 'object' then return false; end if;
   v_home_currency := coalesce((select home_currency from public.trips where id = p_trip_id), 'MYR');
   v_foreign_currency := coalesce(nullif(p_state->>'foreignCurrency', ''), 'CNY');
@@ -401,8 +406,8 @@ begin
   return true;
 end;
 $$;
-revoke all on function public.save_trip_workspace(uuid, jsonb, text) from public;
-grant execute on function public.save_trip_workspace(uuid, jsonb, text) to anon, authenticated;
+revoke all on function public.save_trip_workspace(uuid, jsonb, text, text) from public;
+grant execute on function public.save_trip_workspace(uuid, jsonb, text, text) to anon, authenticated;
 
 create or replace function public.set_trip_guest_name(p_trip_id uuid, p_token_hash text, p_display_name text)
 returns boolean language plpgsql security definer set search_path = public, extensions
@@ -430,6 +435,38 @@ grant execute on function public.set_trip_guest_name(uuid, text, text) to anon, 
 revoke all on function public.get_trip_edit_events(uuid) from public;
 grant execute on function public.get_trip_edit_events(uuid) to authenticated;
 
+-- Optional owner-set password gating edit-permission share links, on top of the token itself.
+create or replace function public.set_trip_edit_password(p_trip_id uuid, p_password text)
+returns boolean language plpgsql security definer set search_path = public, extensions
+as $$
+begin
+  if public.trip_role(p_trip_id) <> 'owner' then return false; end if;
+  if p_password is null or trim(p_password) = '' then
+    update public.trips set edit_password_hash = null where id = p_trip_id;
+  else
+    if char_length(trim(p_password)) < 4 then return false; end if;
+    update public.trips set edit_password_hash = crypt(trim(p_password), gen_salt('bf')) where id = p_trip_id;
+  end if;
+  return true;
+end; $$;
+
+create or replace function public.verify_trip_edit_password(p_token_hash text, p_password text)
+returns boolean language plpgsql security definer set search_path = public, extensions
+as $$
+declare v_trip_id uuid; v_hash text;
+begin
+  select trip_id into v_trip_id from public.trip_shares where token_hash = p_token_hash and permission = 'edit' and revoked_at is null and (expires_at is null or expires_at > now()) limit 1;
+  if v_trip_id is null then return false; end if;
+  select edit_password_hash into v_hash from public.trips where id = v_trip_id;
+  if v_hash is null then return true; end if;
+  return v_hash = crypt(coalesce(p_password, ''), v_hash);
+end; $$;
+
+revoke all on function public.set_trip_edit_password(uuid, text) from public;
+grant execute on function public.set_trip_edit_password(uuid, text) to authenticated;
+revoke all on function public.verify_trip_edit_password(text, text) from public;
+grant execute on function public.verify_trip_edit_password(text, text) to anon, authenticated;
+
 -- Secure, hashed, revocable, expiring read-only share links.
 create or replace function public.create_trip_share(p_trip_id uuid, p_token_hash text, p_permission text default 'view', p_expires_at timestamptz default null)
 returns uuid language plpgsql security definer set search_path = public, extensions
@@ -455,10 +492,11 @@ end; $$;
 create or replace function public.get_shared_trip_workspace(p_token_hash text)
 returns jsonb language plpgsql security definer set search_path = public, extensions
 as $$
-declare v_trip_id uuid; v_trip jsonb; v_state jsonb;
+declare v_trip_id uuid; v_trip jsonb; v_state jsonb; v_requires_password boolean;
 begin
   select trip_id into v_trip_id from public.trip_shares where token_hash = p_token_hash and revoked_at is null and (expires_at is null or expires_at > now()) limit 1;
   if v_trip_id is null then return null; end if;
+  select (edit_password_hash is not null) into v_requires_password from public.trips where id = v_trip_id;
   select jsonb_build_object('id', t.id, 'slug', t.slug, 'title', t.title, 'destination', t.destination, 'description', t.description, 'start_date', t.start_date, 'end_date', t.end_date, 'home_currency', t.home_currency, 'foreign_currency', t.foreign_currency, 'exchange_rate', t.exchange_rate, 'visibility', t.visibility, 'owner_id', t.owner_id, 'created_at', t.created_at, 'updated_at', t.updated_at) into v_trip from public.trips t where t.id = v_trip_id;
   select jsonb_build_object(
     'days', coalesce((select jsonb_agg(jsonb_build_object('n', d.day_number, 'title', d.title, 'intensity', d.intensity, 'steps', d.walking_note, 'mapUrl', d.map_url, 'notes', d.notes, 'items', coalesce((select jsonb_agg(jsonb_build_object('t', a.time_label, 'x', a.title, 'move', a.transport_note, 'fee', a.fee_note, 'link', coalesce((select jsonb_agg(jsonb_build_object('label', l.label, 'url', l.url) order by l.sort_order) from public.activity_links l where l.activity_id = a.id), '[]'::jsonb)) order by a.sort_order) from public.activities a where a.day_id = d.id), '[]'::jsonb)) order by d.day_number) from public.trip_days d where d.trip_id = v_trip_id), '[]'::jsonb),
@@ -470,7 +508,7 @@ begin
     'notes', coalesce((select jsonb_agg(jsonb_build_object('author', n.author_name, 'text', n.content, 'ts', n.created_at) order by n.created_at desc) from public.trip_notes n where n.trip_id = v_trip_id), '[]'::jsonb),
     'collapsed', '{}'::jsonb, 'foreignCurrency', v_trip->>'foreign_currency', 'exchangeRate', v_trip->>'exchange_rate'
   ) into v_state;
-  return jsonb_build_object('trip', v_trip, 'state', v_state, 'sharePermission', (select permission from public.trip_shares where token_hash = p_token_hash and trip_id = v_trip_id and revoked_at is null and (expires_at is null or expires_at > now()) limit 1));
+  return jsonb_build_object('trip', v_trip, 'state', v_state, 'sharePermission', (select permission from public.trip_shares where token_hash = p_token_hash and trip_id = v_trip_id and revoked_at is null and (expires_at is null or expires_at > now()) limit 1), 'requiresEditPassword', coalesce(v_requires_password, false));
 end; $$;
 
 revoke all on function public.create_trip_share(uuid, text, text, timestamptz) from public;

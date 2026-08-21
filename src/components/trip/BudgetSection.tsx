@@ -32,6 +32,9 @@ export default function BudgetSection({
         </span>
       </div>
 
+      {state.budget.length === 0 ? (
+        <div className="hidden sm:block empty-state">还没有预算项目</div>
+      ) : (
       <div className="hidden sm:block overflow-auto">
         <table className="budget-table w-full border-separate border-spacing-0 bg-surface border border-line rounded-lg overflow-hidden shadow-xs">
           <thead>
@@ -72,6 +75,7 @@ export default function BudgetSection({
           </tbody>
         </table>
       </div>
+      )}
 
       <div className="sm:hidden flex flex-col gap-3">
         {state.budget.length === 0 ? (
