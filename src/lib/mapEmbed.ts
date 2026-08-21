@@ -8,6 +8,10 @@ export function toMapEmbedSrc(input: string): string | null {
   }
   if (value.includes('output=embed')) return value;
 
+  const originMatch = value.match(/[?&]origin=([^&]+)/);
+  const destMatch = value.match(/[?&]destination=([^&]+)/);
+  if (originMatch && destMatch) return `https://maps.google.com/maps?saddr=${originMatch[1]}&daddr=${destMatch[1]}&output=embed`;
+
   const atMatch = value.match(/@(-?\d+\.\d+),(-?\d+\.\d+)/);
   if (atMatch) return `https://maps.google.com/maps?q=${atMatch[1]},${atMatch[2]}&z=15&output=embed`;
 
