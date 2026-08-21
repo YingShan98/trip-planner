@@ -58,7 +58,7 @@ export function templateState(): TripState {
         notes: '示例：老人可在附近咖啡厅休息',
       },
     ],
-    checklist: [{ id: uid('c'), text: '示例：确认护照有效期', done: false }],
+    checklist: [{ id: uid('c'), text: '示例：确认护照有效期', done: false, category: '证件与签证' }],
     packing: [],
     hotels: [
       {
@@ -102,7 +102,9 @@ export function normalize(s: unknown): TripState {
             : [],
         }))
       : x.days;
-  x.checklist = Array.isArray(src.checklist) ? src.checklist : [];
+  x.checklist = Array.isArray(src.checklist)
+    ? src.checklist.map((c) => ({ id: c.id || uid('c'), text: c.text || '', done: c.done === true, category: c.category || '其他' }))
+    : [];
   x.packing = Array.isArray(src.packing)
     ? src.packing.map((p: PackingItem) => ({ id: p.id || uid('p'), text: p.text || '', done: p.done === true, category: p.category || '其他' }))
     : [];

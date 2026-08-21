@@ -81,7 +81,7 @@ export async function loadTrip(slug: string): Promise<TripWorkspace> {
       link: activityLinks.filter((link) => link.activity_id === activity.id).map((link) => ({ label: String(link.label || ''), url: String(link.url || '') })),
     } as Activity)),
   }));
-  state.checklist = (result('读取准备清单', checklist) as Array<Record<string, unknown>>).map((item) => ({ id: String(item.id), text: String(item.text || ''), done: item.is_done === true } as ChecklistItem));
+  state.checklist = (result('读取准备清单', checklist) as Array<Record<string, unknown>>).map((item) => ({ id: String(item.id), text: String(item.text || ''), done: item.is_done === true, category: String(item.category || '其他') } as ChecklistItem));
   state.packing = (result('读取打包清单', packing) as Array<Record<string, unknown>>).map((item) => ({ id: String(item.id), text: String(item.text || ''), done: item.is_done === true, category: String(item.category || '其他') } as PackingItem));
   state.hotels = accommodationsRows.map((item) => ({
     rank: String(item.rank_label || ''), name: String(item.name || ''), addr: String(item.address || ''), warn: String(item.warning || ''),

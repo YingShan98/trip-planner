@@ -30,6 +30,7 @@ export interface ChecklistItem {
   id: string;
   text: string;
   done: boolean;
+  category: string;
 }
 
 export interface PackingItem {
