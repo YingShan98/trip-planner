@@ -503,12 +503,12 @@ export default function TripView({
         <div className="min-w-0">
           <div id="overview" className="scroll-mt-32"><Dashboard state={state} description={currentTrip.description} total={total} done={done} startDate={currentTrip.start_date} endDate={currentTrip.end_date} weather={weather} /></div>
           <div id="prepare" className="scroll-mt-32"><Checklist state={state} editUnlocked={editUnlocked} mutate={mutate} /></div>
-          <div id="itinerary" className="scroll-mt-32"><DaysSection state={state} editUnlocked={editUnlocked} mutate={mutate} mutateNoSave={mutateNoSave} startDate={currentTrip.start_date} weather={weather} onCollapseAll={() => mutateNoSave((s) => { s.days.forEach((_, i) => { s.collapsed[i] = true; }); })} /></div>
-          <div id="stay" className="scroll-mt-32"><HotelsSection state={state} editUnlocked={editUnlocked} mutate={mutate} /></div>
+          <div id="itinerary" className="scroll-mt-32"><DaysSection state={state} editUnlocked={editUnlocked} mutate={mutate} mutateNoSave={mutateNoSave} startDate={currentTrip.start_date} weather={weather} authorName={myPresenceName} onCollapseAll={() => mutateNoSave((s) => { s.days.forEach((_, i) => { s.collapsed[i] = true; }); })} /></div>
+          <div id="stay" className="scroll-mt-32"><HotelsSection state={state} editUnlocked={editUnlocked} mutate={mutate} authorName={myPresenceName} /></div>
           <div id="currency" className="scroll-mt-32"><CurrencySection state={state} homeCurrency={currentTrip.home_currency} mutate={mutate} /></div>
           <div id="transport" className="scroll-mt-32"><TransportSection state={state} editUnlocked={editUnlocked} mutate={mutate} homeCurrency={currentTrip.home_currency} /></div>
           <div id="budget" className="scroll-mt-32"><BudgetSection state={state} editUnlocked={editUnlocked} mutate={mutate} currency={currentTrip.home_currency} /></div>
-          <div id="notes" className="scroll-mt-32"><NotesSection state={state} editUnlocked={editUnlocked} mutate={mutate} /></div>
+          <div id="notes" className="scroll-mt-32"><NotesSection state={state} editUnlocked={editUnlocked} mutate={mutate} authorName={myPresenceName} /></div>
         </div>
       </div>
 

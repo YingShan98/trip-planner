@@ -6,6 +6,7 @@ import { toMapEmbedSrc } from '../../lib/mapEmbed';
 import { dayDate, formatDateWithWeekday } from '../../lib/format';
 import { weatherEmoji, type WeatherResult } from '../../lib/weather';
 import MarkdownText from '../MarkdownText';
+import CommentThread from './CommentThread';
 
 const TIME_OPTIONS = ['清晨', '上午', '午间', '下午', '傍晚', '晚间', '全天'];
 const intensityLabel = (i: Intensity) => i === 'light' ? '轻松' : i === 'medium' ? '中等' : '较累';
@@ -101,10 +102,11 @@ function ActivityRow({ a, di, ai, total, editUnlocked, mutate }: {
   );
 }
 
-function DayCard({ d, i, total, collapsed, editUnlocked, mutate, mutateNoSave, date, dayWeather }: {
+function DayCard({ d, i, total, collapsed, editUnlocked, mutate, mutateNoSave, date, dayWeather, state, authorName }: {
   d: Day; i: number; total: number; collapsed: boolean;
   editUnlocked: boolean; mutate: Mutate; mutateNoSave: Mutate;
   date: string | null; dayWeather?: { tMax: number; tMin: number; precipProb: number; code: number };
+  state: TripState; authorName: string;
 }) {
   const [showMap, setShowMap] = useState(false);
   const embedSrc = d.mapUrl ? toMapEmbedSrc(d.mapUrl) : null;
@@ -115,6 +117,10 @@ function DayCard({ d, i, total, collapsed, editUnlocked, mutate, mutateNoSave, d
     mutate((s) => {
       [s.days[i], s.days[j]] = [s.days[j], s.days[i]];
       s.days.forEach((day, k) => (day.n = k + 1));
+      s.notes.forEach((n) => {
+        if (n.target?.type === 'day' && n.target.index === i) n.target.index = j;
+        else if (n.target?.type === 'day' && n.target.index === j) n.target.index = i;
+      });
     });
   };
 
@@ -157,7 +163,15 @@ function DayCard({ d, i, total, collapsed, editUnlocked, mutate, mutateNoSave, d
               <button aria-label="上移这一天" className="btn-mini edit-only" disabled={i === 0} onClick={() => moveDay(-1)}>↑</button>
               <button aria-label="下移这一天" className="btn-mini edit-only" disabled={i === total - 1} onClick={() => moveDay(1)}>↓</button>
               <button aria-label={`删除 D${i + 1}「${d.title || ''}」`} className="btn-mini edit-only"
-                onClick={async () => { if (!await confirmDialog('删除这个 Day？', { title: '删除 Day', confirmLabel: '删除', danger: true })) return; mutate((s) => { s.days.splice(i, 1); s.days.forEach((day, k) => (day.n = k + 1)); }); }}>
+                onClick={async () => {
+                  if (!await confirmDialog('删除这个 Day？', { title: '删除 Day', confirmLabel: '删除', danger: true })) return;
+                  mutate((s) => {
+                    s.days.splice(i, 1);
+                    s.days.forEach((day, k) => (day.n = k + 1));
+                    s.notes = s.notes.filter((n) => !(n.target?.type === 'day' && n.target.index === i));
+                    s.notes.forEach((n) => { if (n.target?.type === 'day' && n.target.index > i) n.target.index -= 1; });
+                  });
+                }}>
                 ×
               </button>
             </>
@@ -248,6 +262,8 @@ function DayCard({ d, i, total, collapsed, editUnlocked, mutate, mutateNoSave, d
           ) : d.notes ? (
             <div className="rich-field mt-2"><span className="rich-label">当天备注</span><MarkdownText text={d.notes} /></div>
           ) : null}
+
+          <CommentThread state={state} editUnlocked={editUnlocked} mutate={mutate} targetType="day" targetIndex={i} authorName={authorName} />
         </div>
       )}
     </article>
@@ -255,10 +271,10 @@ function DayCard({ d, i, total, collapsed, editUnlocked, mutate, mutateNoSave, d
 }
 
 export default function DaysSection({
-  state, editUnlocked, mutate, mutateNoSave, startDate, weather, onCollapseAll,
+  state, editUnlocked, mutate, mutateNoSave, startDate, weather, authorName, onCollapseAll,
 }: {
   state: TripState; editUnlocked: boolean; mutate: Mutate; mutateNoSave: Mutate;
-  startDate: string | null; weather: WeatherResult | 'loading' | null; onCollapseAll: () => void;
+  startDate: string | null; weather: WeatherResult | 'loading' | null; authorName: string; onCollapseAll: () => void;
 }) {
   const weatherByDate = weather && weather !== 'loading' && weather.status === 'ok'
     ? new Map(weather.days.map((w) => [w.date, w]))
@@ -279,6 +295,7 @@ export default function DaysSection({
             collapsed={Boolean(state.collapsed[i])}
             editUnlocked={editUnlocked} mutate={mutate} mutateNoSave={mutateNoSave}
             date={date} dayWeather={date ? weatherByDate?.get(date) : undefined}
+            state={state} authorName={authorName}
           />
         );
       })}

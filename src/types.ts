@@ -66,10 +66,17 @@ export interface BudgetItem {
   note: string;
 }
 
+/** Ties a note to a specific hotel/day card instead of the general notes wall. Indexes into TripState.hotels/days. */
+export interface NoteTarget {
+  type: 'hotel' | 'day';
+  index: number;
+}
+
 export interface NoteItem {
   author: string;
   text: string;
   ts: string;
+  target?: NoteTarget;
 }
 
 export interface TripState {

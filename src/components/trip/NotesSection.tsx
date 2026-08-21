@@ -2,10 +2,20 @@ import type { Mutate, TripState } from '../../types';
 import MarkdownText from '../MarkdownText';
 
 export default function NotesSection({
-  state, editUnlocked, mutate,
+  state, editUnlocked, mutate, authorName,
 }: {
-  state: TripState; editUnlocked: boolean; mutate: Mutate;
+  state: TripState; editUnlocked: boolean; mutate: Mutate; authorName: string;
 }) {
+  const targetLabel = (target: TripState['notes'][number]['target']) => {
+    if (!target) return null;
+    if (target.type === 'hotel') {
+      const h = state.hotels[target.index];
+      return h ? { text: `🏨 ${h.name || '未命名酒店'}`, href: `#hotel-${target.index}` } : null;
+    }
+    const d = state.days[target.index];
+    return d ? { text: `🗓️ D${target.index + 1} · ${d.title}`, href: `#day-${target.index + 1}` } : null;
+  };
+
   return (
     <section className="py-7">
       <div className="flex justify-between items-center gap-2.5 pb-3.5 mb-4 border-b-2 border-line flex-wrap">
@@ -17,7 +27,7 @@ export default function NotesSection({
         <button
           className="add-btn edit-only mb-4"
           onClick={() => mutate((d) => {
-            d.notes.unshift({ author: '', text: '', ts: new Date().toLocaleString('zh-CN') });
+            d.notes.unshift({ author: authorName, text: '', ts: new Date().toLocaleString('zh-CN') });
           })}
         >
           ＋ 写留言
@@ -28,19 +38,24 @@ export default function NotesSection({
         {state.notes.length === 0 ? (
           <div className="empty-state">还没有留言</div>
         ) : (
-          state.notes.map((n, i) => (
+          state.notes.map((n, i) => {
+            const target = targetLabel(n.target);
+            return (
             <article
               key={i}
               className="bg-surface border border-line border-l-[3px] border-l-jade rounded-lg px-4 py-3.5 shadow-xs transition-shadow duration-150 hover:shadow-sm"
             >
-              <div className="flex gap-2.5 items-center mb-2.5 pb-2.5 border-b border-line">
+              <div className="flex gap-2.5 items-center mb-2.5 pb-2.5 border-b border-line flex-wrap">
                 {editUnlocked ? <input
                     className="inp-bare editable font-bold text-[14px] text-jade-dark flex-1"
                     value={n.author}
                     placeholder="姓名"
                     onChange={(e) => mutate((d) => { d.notes[i].author = e.target.value; })}
                   /> : <strong className="text-[14px] text-jade-dark flex-1">{n.author || '同行者'}</strong>}
-                <span className="text-muted text-[12px]">{n.ts || ''}</span>
+                {target && (
+                  <a href={target.href} className="pill text-[11px] no-underline shrink-0 hover:bg-jade-light">{target.text}</a>
+                )}
+                <span className="text-muted text-[12px] shrink-0">{n.ts || ''}</span>
                 <button
                   aria-label={`删除留言（${n.author || '同行者'}）`}
                   className="btn-mini edit-only"
@@ -56,7 +71,8 @@ export default function NotesSection({
                   onChange={(e) => mutate((d) => { d.notes[i].text = e.target.value; })}
                 /> : <MarkdownText text={n.text} className="note-copy" />}
             </article>
-          ))
+            );
+          })
         )}
       </div>
     </section>

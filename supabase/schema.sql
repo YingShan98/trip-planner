@@ -183,6 +183,10 @@ create table if not exists public.trip_notes (
   author_id uuid references auth.users(id) on delete set null,
   author_name text not null default '',
   content text not null default '',
+  -- Optional: ties this note to one hotel/day card instead of the general notes wall.
+  -- target_index refers to that item's position in TripState.hotels/days at save time (see CLAUDE.md mutation pattern) — not a foreign key.
+  target_type text check (target_type in ('hotel', 'day')),
+  target_index integer,
   created_at timestamptz not null default now(),
   updated_at timestamptz not null default now()
 );
@@ -282,6 +286,10 @@ alter table public.trips
   add column if not exists edit_password_hash text,
   add column if not exists cover_image_url text;
 
+alter table public.trip_notes
+  add column if not exists target_type text check (target_type in ('hotel', 'day')),
+  add column if not exists target_index integer;
+
 -- Role helper used by RLS and transactional RPCs.
 create or replace function public.trip_role(p_trip_id uuid)
 returns text language sql stable security definer set search_path = public
@@ -375,7 +383,9 @@ begin
   insert into public.packing_items(trip_id, category, text, is_done, sort_order) select p_trip_id, coalesce(item->>'category','其他'), coalesce(item->>'text',''), coalesce((item->>'done')::boolean, false), ordinality - 1 from jsonb_array_elements(coalesce(p_state->'packing','[]'::jsonb)) with ordinality as rows(item, ordinality);
   insert into public.transport_options(trip_id, sort_order, type, description, price_label, amount, currency_code) select p_trip_id, ordinality - 1, coalesce(item->>'type',''), coalesce(item->>'description',''), coalesce(item->>'price',''), nullif(item->>'amount','')::numeric, case when item->>'currency' = 'foreign' then v_foreign_currency else v_home_currency end from jsonb_array_elements(coalesce(p_state->'transport','[]'::jsonb)) with ordinality as rows(item, ordinality);
   insert into public.budget_items(trip_id, sort_order, category, unit, quantity, unit_price, currency_code, note) select p_trip_id, ordinality - 1, coalesce(item->>'category',''), coalesce(item->>'unit',''), coalesce(nullif(item->>'quantity','')::numeric, 0), coalesce(nullif(item->>'unitPrice','')::numeric, 0), case when item->>'currency' = 'foreign' then v_foreign_currency else v_home_currency end, coalesce(item->>'note','') from jsonb_array_elements(coalesce(p_state->'budget','[]'::jsonb)) with ordinality as rows(item, ordinality);
-  insert into public.trip_notes(trip_id, author_name, content) select p_trip_id, coalesce(item->>'author',''), coalesce(item->>'text','') from jsonb_array_elements(coalesce(p_state->'notes','[]'::jsonb)) as rows(item);
+  insert into public.trip_notes(trip_id, author_name, content, target_type, target_index)
+  select p_trip_id, coalesce(item->>'author',''), coalesce(item->>'text',''), item->'target'->>'type', nullif(item->'target'->>'index','')::integer
+  from jsonb_array_elements(coalesce(p_state->'notes','[]'::jsonb)) as rows(item);
   v_index := 0;
   for v_day in select value from jsonb_array_elements(coalesce(p_state->'days','[]'::jsonb)) loop
     insert into public.trip_days(trip_id, day_number, title, intensity, walking_note, map_url, notes) values (p_trip_id, v_index + 1, coalesce(v_day->>'title','Day ' || (v_index + 1)), coalesce(v_day->>'intensity','light'), coalesce(v_day->>'steps',''), coalesce(v_day->>'mapUrl',''), coalesce(v_day->>'notes','')) returning id into v_day_id;
@@ -507,7 +517,7 @@ begin
     'hotels', coalesce((select jsonb_agg(jsonb_build_object('rank', h.rank_label, 'name', h.name, 'addr', h.address, 'warn', h.warning, 'pointsText', h.pros_cons, 'notes', h.notes, 'link', coalesce((select jsonb_agg(jsonb_build_object('label', l.label, 'url', l.url) order by l.sort_order) from public.accommodation_links l where l.accommodation_id = h.id), '[]'::jsonb)) order by h.sort_order) from public.accommodations h where h.trip_id = v_trip_id), '[]'::jsonb),
     'transport', coalesce((select jsonb_agg(jsonb_build_object('type', x.type, 'description', x.description, 'price', x.price_label, 'amount', x.amount, 'currency', case when x.currency_code = t.home_currency then 'home' else 'foreign' end) order by x.sort_order) from public.transport_options x join public.trips t on t.id = x.trip_id where x.trip_id = v_trip_id), '[]'::jsonb),
     'budget', coalesce((select jsonb_agg(jsonb_build_object('category', b.category, 'unit', b.unit, 'quantity', b.quantity, 'unitPrice', b.unit_price, 'currency', case when b.currency_code = t.home_currency then 'home' else 'foreign' end, 'note', b.note) order by b.sort_order) from public.budget_items b join public.trips t on t.id = b.trip_id where b.trip_id = v_trip_id), '[]'::jsonb),
-    'notes', coalesce((select jsonb_agg(jsonb_build_object('author', n.author_name, 'text', n.content, 'ts', n.created_at) order by n.created_at desc) from public.trip_notes n where n.trip_id = v_trip_id), '[]'::jsonb),
+    'notes', coalesce((select jsonb_agg(jsonb_build_object('author', n.author_name, 'text', n.content, 'ts', n.created_at, 'target', case when n.target_type is not null then jsonb_build_object('type', n.target_type, 'index', n.target_index) else null end) order by n.created_at desc) from public.trip_notes n where n.trip_id = v_trip_id), '[]'::jsonb),
     'collapsed', '{}'::jsonb, 'foreignCurrency', v_trip->>'foreign_currency', 'exchangeRate', v_trip->>'exchange_rate'
   ) into v_state;
   return jsonb_build_object('trip', v_trip, 'state', v_state, 'sharePermission', (select permission from public.trip_shares where token_hash = p_token_hash and trip_id = v_trip_id and revoked_at is null and (expires_at is null or expires_at > now()) limit 1), 'requiresEditPassword', coalesce(v_requires_password, false));

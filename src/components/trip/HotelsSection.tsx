@@ -1,11 +1,12 @@
 import { defaultHotel } from '../../state';
 import type { Mutate, TripState } from '../../types';
 import MarkdownText from '../MarkdownText';
+import CommentThread from './CommentThread';
 
 export default function HotelsSection({
-  state, editUnlocked, mutate,
+  state, editUnlocked, mutate, authorName,
 }: {
-  state: TripState; editUnlocked: boolean; mutate: Mutate;
+  state: TripState; editUnlocked: boolean; mutate: Mutate; authorName: string;
 }) {
   return (
     <section className="py-7 border-b border-line">
@@ -19,7 +20,7 @@ export default function HotelsSection({
       ) : (
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3.5">
           {state.hotels.map((h, i) => (
-            <article key={i} className="bg-surface border border-line rounded-lg p-4 shadow-xs flex flex-col gap-2.5">
+            <article id={`hotel-${i}`} key={i} className="bg-surface border border-line rounded-lg p-4 shadow-xs flex flex-col gap-2.5 scroll-mt-32">
 
               {/* Row 1: rank badge + delete */}
               <div className="flex items-center justify-between gap-2">
@@ -32,7 +33,11 @@ export default function HotelsSection({
                 <button
                   aria-label={`删除酒店「${h.name || i + 1}」`}
                   className="btn-mini edit-only shrink-0"
-                  onClick={() => mutate((d) => { d.hotels.splice(i, 1); })}
+                  onClick={() => mutate((d) => {
+                    d.hotels.splice(i, 1);
+                    d.notes = d.notes.filter((n) => !(n.target?.type === 'hotel' && n.target.index === i));
+                    d.notes.forEach((n) => { if (n.target?.type === 'hotel' && n.target.index > i) n.target.index -= 1; });
+                  })}
                 >
                   ×
                 </button>
@@ -111,6 +116,8 @@ export default function HotelsSection({
                   </button>
                 )}
               </div>
+
+              <CommentThread state={state} editUnlocked={editUnlocked} mutate={mutate} targetType="hotel" targetIndex={i} authorName={authorName} />
             </article>
           ))}
         </div>

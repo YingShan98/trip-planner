@@ -96,7 +96,12 @@ export async function loadTrip(slug: string): Promise<TripWorkspace> {
     category: String(item.category || ''), unit: String(item.unit || ''), quantity: Number(item.quantity || 0), unitPrice: Number(item.unit_price || 0),
     currency: item.currency_code === trip.home_currency ? 'home' : 'foreign', note: String(item.note || ''),
   } as BudgetItem));
-  state.notes = (result('读取留言', notes) as Array<Record<string, unknown>>).map((item) => ({ author: String(item.author_name || ''), text: String(item.content || ''), ts: String(item.created_at || '') } as NoteItem));
+  state.notes = (result('读取留言', notes) as Array<Record<string, unknown>>).map((item) => ({
+    author: String(item.author_name || ''), text: String(item.content || ''), ts: String(item.created_at || ''),
+    target: (item.target_type === 'hotel' || item.target_type === 'day') && item.target_index !== null
+      ? { type: item.target_type, index: Number(item.target_index) }
+      : undefined,
+  } as NoteItem));
   state.foreignCurrency = trip.foreign_currency || '';
   state.exchangeRate = trip.exchange_rate ?? '';
   return { trip, state };
