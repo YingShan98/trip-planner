@@ -63,7 +63,7 @@ export default function BudgetSection({
                     <span className="text-[13px] font-medium">{formatMoney(raw, x.currency === 'home' ? home : foreign)}</span>,
                     <span className="text-[13px] font-medium text-jade-dark">{conv.home !== null ? formatMoney(conv.home, home) : '未换算'}</span>,
                     editUnlocked ? <input className="editable w-full border-none bg-transparent p-1 outline-none group-hover:bg-jade-light rounded transition-colors" value={x.note} onChange={(e) => mutate((d) => { d.budget[i].note = e.target.value; })} /> : <MarkdownText text={x.note} className="budget-note" />,
-                    editUnlocked ? <button className="btn-mini edit-only" onClick={() => mutate((d) => { d.budget.splice(i, 1); })}>×</button> : null,
+                    editUnlocked ? <button aria-label={`删除预算项目「${x.category || i + 1}」`} className="btn-mini edit-only" onClick={() => mutate((d) => { d.budget.splice(i, 1); })}>×</button> : null,
                   ].map((cell, ci) => (
                     <td key={ci} className="px-3 py-2.5 border-b border-line align-middle text-[13.5px] last:border-r-0">
                       {cell}

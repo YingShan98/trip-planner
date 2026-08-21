@@ -3,6 +3,8 @@ import { defaultActivity, defaultDay } from '../../state';
 import type { Activity, Day, Intensity, Mutate, TripState } from '../../types';
 import { confirmDialog } from '../../lib/confirm';
 import { toMapEmbedSrc } from '../../lib/mapEmbed';
+import { dayDate, formatDateWithWeekday } from '../../lib/format';
+import { weatherEmoji, type WeatherResult } from '../../lib/weather';
 import MarkdownText from '../MarkdownText';
 
 const TIME_OPTIONS = ['清晨', '上午', '午间', '下午', '傍晚', '晚间', '全天'];
@@ -26,7 +28,7 @@ function LinkRows({ di, ai, links, editUnlocked, mutate }: {
                 onChange={(e) => mutate((d) => { d.days[di].items[ai].link[li].label = e.target.value; })} />
               <input className="inp editable" value={l.url} placeholder="https://..."
                 onChange={(e) => mutate((d) => { d.days[di].items[ai].link[li].url = e.target.value; })} />
-              <button className="btn-mini edit-only"
+              <button aria-label={`删除链接「${l.label || l.url || li + 1}」`} className="btn-mini edit-only"
                 onClick={() => mutate((d) => { d.days[di].items[ai].link.splice(li, 1); })}>×</button>
             </div>
           ))}
@@ -73,9 +75,9 @@ function ActivityRow({ a, di, ai, total, editUnlocked, mutate }: {
         ) : <MarkdownText text={a.x} className="activity-title" />}
         {editUnlocked && (
           <div className="flex gap-1">
-            <button className="btn-mini edit-only" disabled={ai === 0} onClick={() => moveActivity(-1)}>↑</button>
-            <button className="btn-mini edit-only" disabled={ai === total - 1} onClick={() => moveActivity(1)}>↓</button>
-            <button className="btn-mini edit-only"
+            <button aria-label="上移这个行程项目" className="btn-mini edit-only" disabled={ai === 0} onClick={() => moveActivity(-1)}>↑</button>
+            <button aria-label="下移这个行程项目" className="btn-mini edit-only" disabled={ai === total - 1} onClick={() => moveActivity(1)}>↓</button>
+            <button aria-label={`删除行程项目「${a.x || ai + 1}」`} className="btn-mini edit-only"
               onClick={() => mutate((d) => { d.days[di].items.splice(ai, 1); })}>×</button>
           </div>
         )}
@@ -99,9 +101,10 @@ function ActivityRow({ a, di, ai, total, editUnlocked, mutate }: {
   );
 }
 
-function DayCard({ d, i, total, collapsed, editUnlocked, mutate, mutateNoSave }: {
+function DayCard({ d, i, total, collapsed, editUnlocked, mutate, mutateNoSave, date, dayWeather }: {
   d: Day; i: number; total: number; collapsed: boolean;
   editUnlocked: boolean; mutate: Mutate; mutateNoSave: Mutate;
+  date: string | null; dayWeather?: { tMax: number; tMin: number; precipProb: number; code: number };
 }) {
   const [showMap, setShowMap] = useState(false);
   const embedSrc = d.mapUrl ? toMapEmbedSrc(d.mapUrl) : null;
@@ -122,6 +125,12 @@ function DayCard({ d, i, total, collapsed, editUnlocked, mutate, mutateNoSave }:
         <span className="bg-jade-dark text-white rounded-[5px] px-2.5 py-1 font-bold text-[11.5px] tracking-[0.06em] shrink-0">
           D{i + 1}
         </span>
+        {date && (
+          <span className="text-muted text-[12px] font-semibold shrink-0" title={dayWeather ? `${dayWeather.tMax}° / ${dayWeather.tMin}° · 降雨概率 ${dayWeather.precipProb}%` : undefined}>
+            {formatDateWithWeekday(date)}
+            {dayWeather && <> <span aria-hidden="true">{weatherEmoji(dayWeather.code)}</span> {dayWeather.tMax}°/{dayWeather.tMin}°</>}
+          </span>
+        )}
         {editUnlocked ? (
           <input
             className="inp-bare editable flex-1 min-w-[140px] font-bold text-[15px] font-serif py-1"
@@ -133,21 +142,21 @@ function DayCard({ d, i, total, collapsed, editUnlocked, mutate, mutateNoSave }:
         <div className="flex gap-1.5 ml-auto">
           {d.mapUrl && (
             <button
-              className={`btn-mini flex items-center gap-1 ${showMap ? 'bg-jade-dark !text-white border-jade-dark' : ''}`}
+              className={`no-print btn-mini flex items-center gap-1 ${showMap ? 'bg-jade-dark !text-white border-jade-dark' : ''}`}
               onClick={() => setShowMap((v) => !v)}
             >
               🗺️ {showMap ? '收起地图' : '查看地图'}
             </button>
           )}
-          <button className="btn-mini"
+          <button className="no-print btn-mini"
             onClick={() => mutateNoSave((s) => { s.collapsed[i] = !s.collapsed[i]; })}>
             {collapsed ? '展开' : '折叠'}
           </button>
           {editUnlocked && (
             <>
-              <button className="btn-mini edit-only" disabled={i === 0} onClick={() => moveDay(-1)}>↑</button>
-              <button className="btn-mini edit-only" disabled={i === total - 1} onClick={() => moveDay(1)}>↓</button>
-              <button className="btn-mini edit-only"
+              <button aria-label="上移这一天" className="btn-mini edit-only" disabled={i === 0} onClick={() => moveDay(-1)}>↑</button>
+              <button aria-label="下移这一天" className="btn-mini edit-only" disabled={i === total - 1} onClick={() => moveDay(1)}>↓</button>
+              <button aria-label={`删除 D${i + 1}「${d.title || ''}」`} className="btn-mini edit-only"
                 onClick={async () => { if (!await confirmDialog('删除这个 Day？', { title: '删除 Day', confirmLabel: '删除', danger: true })) return; mutate((s) => { s.days.splice(i, 1); s.days.forEach((day, k) => (day.n = k + 1)); }); }}>
                 ×
               </button>
@@ -158,7 +167,7 @@ function DayCard({ d, i, total, collapsed, editUnlocked, mutate, mutateNoSave }:
 
       {/* Map panel — independent of collapse, shown when toggled */}
       {showMap && d.mapUrl && (
-        <div className="border-b border-line">
+        <div className="no-print border-b border-line">
           <div className="flex items-center justify-between px-4 py-1.5 bg-surface-2 border-b border-dashed border-line">
             <span className="text-[11.5px] text-muted">地图预览</span>
             <a
@@ -246,10 +255,15 @@ function DayCard({ d, i, total, collapsed, editUnlocked, mutate, mutateNoSave }:
 }
 
 export default function DaysSection({
-  state, editUnlocked, mutate, mutateNoSave, onCollapseAll,
+  state, editUnlocked, mutate, mutateNoSave, startDate, weather, onCollapseAll,
 }: {
-  state: TripState; editUnlocked: boolean; mutate: Mutate; mutateNoSave: Mutate; onCollapseAll: () => void;
+  state: TripState; editUnlocked: boolean; mutate: Mutate; mutateNoSave: Mutate;
+  startDate: string | null; weather: WeatherResult | 'loading' | null; onCollapseAll: () => void;
 }) {
+  const weatherByDate = weather && weather !== 'loading' && weather.status === 'ok'
+    ? new Map(weather.days.map((w) => [w.date, w]))
+    : null;
+
   return (
     <section className="py-7 border-b border-line">
       <div className="flex justify-between items-center gap-2.5 pb-3.5 mb-4 border-b-2 border-line flex-wrap">
@@ -257,13 +271,17 @@ export default function DaysSection({
         <div className="flex items-center gap-2"><span className="text-muted text-[13px] hidden sm:inline">任意天数 · 可自由调整顺序</span><button className="btn-mini" onClick={onCollapseAll}>全部折叠</button></div>
       </div>
 
-      {state.days.map((d, i) => (
-        <DayCard
-          key={i} d={d} i={i} total={state.days.length}
-          collapsed={Boolean(state.collapsed[i])}
-          editUnlocked={editUnlocked} mutate={mutate} mutateNoSave={mutateNoSave}
-        />
-      ))}
+      {state.days.map((d, i) => {
+        const date = dayDate(startDate, i);
+        return (
+          <DayCard
+            key={i} d={d} i={i} total={state.days.length}
+            collapsed={Boolean(state.collapsed[i])}
+            editUnlocked={editUnlocked} mutate={mutate} mutateNoSave={mutateNoSave}
+            date={date} dayWeather={date ? weatherByDate?.get(date) : undefined}
+          />
+        );
+      })}
 
       {editUnlocked && (
         <button className="add-btn edit-only"

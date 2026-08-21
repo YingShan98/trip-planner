@@ -1,24 +1,17 @@
-import { useEffect, useState } from 'react';
 import type { TripState } from '../../types';
-import { fetchWeather, weatherEmoji, weatherLabel, type WeatherResult } from '../../lib/weather';
-import { formatDate } from '../../lib/format';
+import { weatherEmoji, weatherLabel, type WeatherResult } from '../../lib/weather';
+import { formatDate, tripCountdown, tripCountdownLabel } from '../../lib/format';
 
 export default function Dashboard({
-  state, description, total, done, destination, startDate, endDate,
+  state, description, total, done, startDate, endDate, weather,
 }: {
   state: TripState; description: string; total: number; done: number;
-  destination: string; startDate: string | null; endDate: string | null;
+  startDate: string | null; endDate: string | null;
+  weather: WeatherResult | 'loading' | null;
 }) {
   const packed = state.packing.filter((x) => x.done).length;
-  const [weather, setWeather] = useState<WeatherResult | 'loading' | null>(null);
-
-  useEffect(() => {
-    if (!destination.trim() || !startDate) { setWeather(null); return; }
-    let cancelled = false;
-    setWeather('loading');
-    fetchWeather(destination, startDate, endDate || startDate).then((result) => { if (!cancelled) setWeather(result); });
-    return () => { cancelled = true; };
-  }, [destination, startDate, endDate]);
+  const countdown = tripCountdown(startDate, endDate);
+  const countdownLabel = tripCountdownLabel(startDate, endDate);
 
   return (
     <section className="py-7 border-b border-line">
@@ -28,6 +21,10 @@ export default function Dashboard({
       </div>
       <div className="grid grid-cols-[repeat(auto-fit,minmax(140px,1fr))] gap-3">
         {[
+          ...(countdownLabel ? [{
+            label: countdown.phase === 'upcoming' ? '距出发' : '旅行状态',
+            value: countdown.phase === 'upcoming' ? `${countdown.days} 天` : countdownLabel,
+          }] : []),
           { label: '旅行天数', value: `${state.days.length} 天` },
           { label: '行程项目', value: `${total} 项` },
           { label: '出发准备', value: `${done}/${state.checklist.length}` },

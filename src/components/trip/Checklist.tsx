@@ -60,6 +60,7 @@ export default function Checklist({
               />
               <span className={`flex-1 text-[14px] ${x.done ? 'line-through text-muted' : ''}`}>{x.text}</span>
               <button
+                aria-label={`删除事项「${x.text || i + 1}」`}
                 className="btn-mini edit-only"
                 onClick={() => mutate((d) => { d.checklist.splice(i, 1); })}
               >

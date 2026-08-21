@@ -4,6 +4,7 @@ import { toast } from '../../lib/toast';
 import { confirmDialog } from '../../lib/confirm';
 import { revokeShares, setTripEditPassword, type TripMeta } from '../../lib/tripApi';
 import { suggestDestinationImage } from '../../lib/destinationImage';
+import { fetchExchangeRate } from '../../lib/exchangeRate';
 import Modal from '../Modal';
 
 export default function SettingsModal({ trip, onClose, onSaved }: {
@@ -21,6 +22,7 @@ export default function SettingsModal({ trip, onClose, onSaved }: {
   const [description, setDescription] = useState(trip.description);
   const [coverImageUrl, setCoverImageUrl] = useState(trip.cover_image_url || '');
   const [fetchingImage, setFetchingImage] = useState(false);
+  const [fetchingRate, setFetchingRate] = useState(false);
   const [revoking, setRevoking] = useState(false);
   const [editPassword, setEditPassword] = useState('');
   const [savingPassword, setSavingPassword] = useState(false);
@@ -33,6 +35,16 @@ export default function SettingsModal({ trip, onClose, onSaved }: {
       if (url) setCoverImageUrl(url);
       else toast('没有找到合适的图片，可手动粘贴图片链接');
     } finally { setFetchingImage(false); }
+  };
+
+  const fetchRate = async () => {
+    if (!foreignCurrency.trim()) { toast('请先填写外币代码'); return; }
+    setFetchingRate(true);
+    try {
+      const rate = await fetchExchangeRate(foreignCurrency.trim(), currency.trim() || 'MYR');
+      if (rate !== null) { setExchangeRate(String(rate)); toast('已获取最新汇率，出发前建议再次核实'); }
+      else toast('没有找到这个货币对的汇率，可手动填写');
+    } finally { setFetchingRate(false); }
   };
 
   const save = async () => {
@@ -77,7 +89,13 @@ export default function SettingsModal({ trip, onClose, onSaved }: {
         <div className="field"><label>开始日期</label><input className="inp" type="date" value={start} onChange={(e) => setStart(e.target.value)} /></div>
         <div className="field"><label>结束日期</label><input className="inp" type="date" value={end} onChange={(e) => setEnd(e.target.value)} /></div>
         <div className="field"><label>外币</label><input className="inp" placeholder="例如 CNY" value={foreignCurrency} onChange={(e) => setForeignCurrency(e.target.value)} /></div>
-        <div className="field"><label>汇率（1 外币 = 本地币）</label><input className="inp" type="number" value={exchangeRate} onChange={(e) => setExchangeRate(e.target.value)} /></div>
+        <div className="field">
+          <label>汇率（1 外币 = 本地币）</label>
+          <div className="flex gap-2">
+            <input className="inp flex-1" type="number" value={exchangeRate} onChange={(e) => setExchangeRate(e.target.value)} />
+            <button type="button" className="btn-ghost shrink-0" disabled={fetchingRate} onClick={fetchRate}>{fetchingRate ? '获取中…' : '获取最新'}</button>
+          </div>
+        </div>
         <div className="field col-span-2">
           <label>封面图片链接（可选）</label>
           <div className="flex gap-2">

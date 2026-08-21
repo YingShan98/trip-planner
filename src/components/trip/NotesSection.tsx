@@ -42,6 +42,7 @@ export default function NotesSection({
                   /> : <strong className="text-[14px] text-jade-dark flex-1">{n.author || '同行者'}</strong>}
                 <span className="text-muted text-[12px]">{n.ts || ''}</span>
                 <button
+                  aria-label={`删除留言（${n.author || '同行者'}）`}
                   className="btn-mini edit-only"
                   onClick={() => mutate((d) => { d.notes.splice(i, 1); })}
                 >

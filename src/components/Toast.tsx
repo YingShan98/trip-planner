@@ -18,7 +18,7 @@ export default function Toast() {
 
   return (
     <div
-      className={`fixed left-1/2 bottom-6 z-[200] bg-ink-2 text-white px-5 py-2.5 rounded-full text-[13.5px] font-medium shadow-md whitespace-nowrap pointer-events-none transition-all duration-[260ms] ${
+      className={`toast fixed left-1/2 bottom-6 z-[200] bg-ink-2 text-white px-5 py-2.5 rounded-full text-[13.5px] font-medium shadow-md whitespace-nowrap pointer-events-none transition-all duration-[260ms] ${
         show ? 'opacity-100 -translate-x-1/2 translate-y-0' : 'opacity-0 -translate-x-1/2 translate-y-3'
       }`}
     >

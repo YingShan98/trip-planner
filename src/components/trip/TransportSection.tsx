@@ -35,6 +35,7 @@ export default function TransportSection({
                     onChange={(e) => mutate((d) => { d.transport[i].type = e.target.value; })}
                   /> : <h3 className="font-serif font-bold text-[17px] text-jade-dark">{x.type}</h3>}
                 <button
+                  aria-label={`删除交通参考「${x.type || i + 1}」`}
                   className="btn-mini edit-only shrink-0 mt-0.5"
                   onClick={() => mutate((d) => { d.transport.splice(i, 1); })}
                 >

@@ -30,6 +30,7 @@ export default function HotelsSection({
                     onChange={(e) => mutate((d) => { d.hotels[i].rank = e.target.value; })}
                   /> : <span className="pill">{h.rank || '未排名'}</span>}
                 <button
+                  aria-label={`删除酒店「${h.name || i + 1}」`}
                   className="btn-mini edit-only shrink-0"
                   onClick={() => mutate((d) => { d.hotels.splice(i, 1); })}
                 >
@@ -77,6 +78,7 @@ export default function HotelsSection({
                           onChange={(e) => mutate((d) => { d.hotels[i].link[li].url = e.target.value; })}
                         />
                         <button
+                          aria-label={`删除链接「${l.label || l.url || li + 1}」`}
                           className="btn-mini edit-only"
                           onClick={() => mutate((d) => { d.hotels[i].link.splice(li, 1); })}
                         >

@@ -64,7 +64,7 @@ export default function App() {
   return (
     <div id="app">
       {/* ── Topbar ── */}
-      <header className="sticky top-0 z-50 flex justify-between items-center gap-3 page-gutter min-h-17 bg-white/92 backdrop-blur-md border-b border-line shadow-xs">
+      <header className="no-print sticky top-0 z-50 flex justify-between items-center gap-3 page-gutter min-h-17 bg-white/92 backdrop-blur-md border-b border-line shadow-xs">
         <div className="flex items-center gap-2.5">
           <div className="w-10 h-10 bg-jade-dark rounded-sm grid place-items-center text-white text-[18px] shrink-0 shadow-sm" aria-hidden="true">
             ↗

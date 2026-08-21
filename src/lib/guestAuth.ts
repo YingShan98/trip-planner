@@ -14,11 +14,21 @@ export function isAnonymousUser(user: { is_anonymous?: boolean } | null | undefi
   return user?.is_anonymous === true;
 }
 
-export async function ensureGuestSession(captchaToken?: string) {
+/** Reads the current session without creating one. Never signs in — safe to call before a captcha token exists. */
+export async function getExistingGuestUser() {
   if (!sb) throw new Error('Supabase 尚未配置');
   const current = await sb.auth.getUser();
-  if (current.error) throw new Error(`读取访客会话：${current.error.message}`);
-  if (current.data.user) return current.data.user;
+  if (current.error && current.error.name !== 'AuthSessionMissingError') {
+    throw new Error(`读取访客会话：${current.error.message}`);
+  }
+  return current.data.user ?? null;
+}
+
+/** Reuses an existing session, or creates an anonymous one. Anonymous sign-in requires a captcha token. */
+export async function ensureGuestSession(captchaToken?: string) {
+  const existing = await getExistingGuestUser();
+  if (existing) return existing;
+  if (!sb) throw new Error('Supabase 尚未配置');
   const response = await sb.auth.signInAnonymously({ options: { captchaToken } });
   if (response.error || !response.data.user) throw new Error(response.error?.message || '无法开启访客会话');
   return response.data.user;

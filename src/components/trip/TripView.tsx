@@ -1,11 +1,13 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
+import type { RealtimeChannel } from '@supabase/supabase-js';
 import { sb } from '../../lib/supabase';
 import { toast } from '../../lib/toast';
 import { confirmDialog } from '../../lib/confirm';
-import { dateRange } from '../../lib/format';
+import { dateRange, dayDate, formatDateWithWeekday, tripCountdownLabel } from '../../lib/format';
+import { fetchWeather, type WeatherResult } from '../../lib/weather';
 import { downloadJSON } from '../../lib/download';
 import { createShare, deleteTrip, getTripRole, loadSharedTrip, loadTrip, saveSharedTrip, saveTrip, verifyEditPassword, type TripMeta } from '../../lib/tripApi';
-import { ensureGuestSession, getTripEditEvents, isAnonymousUser, setGuestName, type TripEditEvent } from '../../lib/guestAuth';
+import { ensureGuestSession, getExistingGuestUser, getTripEditEvents, isAnonymousUser, setGuestName, type TripEditEvent } from '../../lib/guestAuth';
 import type { TripState } from '../../types';
 import { parseRate } from '../../lib/currency';
 import Dashboard from './Dashboard';
@@ -58,6 +60,11 @@ export default function TripView({
   const [hasUnsavedChanges, setHasUnsavedChanges] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
   const [activeSection, setActiveSection] = useState<string>(SECTIONS[0][0]);
+  const [weather, setWeather] = useState<WeatherResult | 'loading' | null>(null);
+  const [myEmail, setMyEmail] = useState<string | null>(null);
+  const [viewers, setViewers] = useState<{ name: string; editing: boolean }[]>([]);
+  const presenceChannelRef = useRef<RealtimeChannel | null>(null);
+  const presenceSubscribedRef = useRef(false);
 
   const editUnlockedRef  = useRef(false);
   const hasUnsavedChangesRef = useRef(false);
@@ -85,6 +92,7 @@ export default function TripView({
         if (!shareToken) {
           const { data: userData } = await sb.auth.getUser();
           setRole(userData.user ? await getTripRole(workspace.trip.id) : null);
+          setMyEmail(userData.user?.email || null);
         } else setRole(null);
       } catch (error) {
         if (!cancelled) toast('无法打开旅行：' + (error as Error).message);
@@ -122,6 +130,33 @@ export default function TripView({
       .subscribe();
     return () => { client.removeChannel(channel); };
   }, [slug, shareToken, currentTrip?.id]);
+
+  /* ── Presence: who else is currently looking at this trip ── */
+  const myPresenceName = guestName || (myEmail ? myEmail.split('@')[0] : null) || (role === 'owner' ? '旅行拥有者' : role === 'editor' ? '同行编辑者' : '访客');
+
+  useEffect(() => {
+    const client = sb;
+    const tripId = currentTrip?.id;
+    if (!client || !tripId) { setViewers([]); return; }
+    const channel = client.channel(`presence:trip:${tripId}`, { config: { presence: { key: crypto.randomUUID() } } });
+    presenceChannelRef.current = channel;
+    channel.on('presence', { event: 'sync' }, () => {
+      const presenceState = channel.presenceState<{ name: string; editing: boolean }>();
+      setViewers(Object.values(presenceState).flat());
+    });
+    channel.subscribe((status) => {
+      if (status === 'SUBSCRIBED') {
+        presenceSubscribedRef.current = true;
+        channel.track({ name: myPresenceName, editing: editUnlockedRef.current });
+      }
+    });
+    return () => { presenceSubscribedRef.current = false; presenceChannelRef.current = null; client.removeChannel(channel); };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [currentTrip?.id]);
+
+  useEffect(() => {
+    if (presenceSubscribedRef.current) presenceChannelRef.current?.track({ name: myPresenceName, editing: editUnlocked });
+  }, [myPresenceName, editUnlocked]);
 
   /* ── Save ── */
   const saveRemote = useCallback(async () => {
@@ -167,10 +202,10 @@ export default function TripView({
     if (shareToken && sharePermission !== 'edit') { toast('此链接仅可查看'); return; }
     if (shareToken && sharePermission === 'edit') {
       try {
-        const guest = await ensureGuestSession();
-        const needsIdentity = isAnonymousUser(guest) && !guestName;
+        const guest = await getExistingGuestUser();
+        const needsIdentity = (!guest || isAnonymousUser(guest)) && !guestName;
         const needsPassword = requiresEditPassword && !editPassword;
-        if (needsIdentity || needsPassword) { setShowGuestIdentity(true); return; }
+        if (!guest || needsIdentity || needsPassword) { setShowGuestIdentity(true); return; }
       } catch (error) { toast('无法开启访客编辑：' + (error as Error).message); return; }
     }
     if (!shareToken && role !== 'owner' && role !== 'editor') { toast('请先登录并获得这趟旅行的编辑权限'); return; }
@@ -268,6 +303,24 @@ export default function TripView({
     return () => window.removeEventListener('beforeunload', warnBeforeLeave);
   }, [hasUnsavedChanges]);
 
+  /* ── Weather (fetched once here, shared by Dashboard's trip-wide strip and DaysSection's per-day badges) ── */
+  useEffect(() => {
+    const destination = currentTrip?.destination?.trim();
+    const startDate = currentTrip?.start_date;
+    if (!destination || !startDate) { setWeather(null); return; }
+    let cancelled = false;
+    setWeather('loading');
+    fetchWeather(destination, startDate, currentTrip?.end_date || startDate).then((result) => { if (!cancelled) setWeather(result); });
+    return () => { cancelled = true; };
+  }, [currentTrip?.destination, currentTrip?.start_date, currentTrip?.end_date]);
+
+  /* Days collapsed on-screen aren't rendered at all, so printing right after a collapse would
+     silently omit their content — expand everything first and let the browser paint before printing. */
+  const handlePrint = () => {
+    mutateNoSave((s) => { s.days.forEach((_, i) => { s.collapsed[i] = false; }); });
+    setTimeout(() => window.print(), 50);
+  };
+
   const exportJSON = () => {
     if (!currentTrip || !state) return;
     downloadJSON((slug || 'trip') + '.json', {
@@ -288,18 +341,18 @@ export default function TripView({
 
       {/* ── Banners ── */}
       {editUnlocked && (
-        <div className="content-gutter py-2.5 bg-gold-tint border-b border-gold-line text-gold text-[13px] font-semibold flex items-center gap-2">
+        <div className="no-print content-gutter py-2.5 bg-gold-tint border-b border-gold-line text-gold text-[13px] font-semibold flex items-center gap-2">
           <span aria-hidden="true">✦</span> 编辑模式已开启 <span className="font-normal">· 修改会自动保存</span>
         </div>
       )}
       {readOnly && (
-        <div className="content-gutter py-2.5 bg-sky-tint border-b border-sky-line text-sky text-[13px] font-semibold flex items-center gap-2">
+        <div className="no-print content-gutter py-2.5 bg-sky-tint border-b border-sky-line text-sky text-[13px] font-semibold flex items-center gap-2">
           <span aria-hidden="true">◌</span> 只读分享模式 <span className="font-normal">· 这是一个共享查看版本</span>
         </div>
       )}
 
       {/* ── Trip hero ── */}
-      <header className="relative overflow-hidden bg-gradient-to-br from-jade-dark to-jade text-white content-gutter py-8">
+      <header className="trip-hero relative overflow-hidden bg-gradient-to-br from-jade-dark to-jade text-white content-gutter py-8">
         {currentTrip.cover_image_url && (
           <img
             src={currentTrip.cover_image_url}
@@ -312,7 +365,7 @@ export default function TripView({
         <div className="absolute inset-0 bg-gradient-to-t from-jade-dark/70 via-transparent to-transparent" />
         <div className="relative z-10">
           <button
-            className="btn mb-5 bg-white/10 border-white/22 text-white/88 text-[13px] px-3.5 py-1.5 hover:bg-white/18 hover:border-white/45 hover:text-white hover:-translate-x-0.5"
+            className="no-print btn mb-5 bg-white/10 border-white/22 text-white/88 text-[13px] px-3.5 py-1.5 hover:bg-white/18 hover:border-white/45 hover:text-white hover:-translate-x-0.5"
             onClick={leaveTrip}
           >
             ← 我的旅行
@@ -325,6 +378,11 @@ export default function TripView({
           </p>
 
           <div className="flex flex-wrap gap-2 mt-4">
+            {tripCountdownLabel(currentTrip.start_date, currentTrip.end_date) && (
+              <span className="pill bg-white/13 border-white/22 text-white/90 hero-pill">
+                🗓️ {tripCountdownLabel(currentTrip.start_date, currentTrip.end_date)}
+              </span>
+            )}
             <span className="pill bg-white/13 border-white/22 text-white/90 hero-pill">
               💰 {currentTrip.home_currency || 'MYR'}
               {state.foreignCurrency
@@ -339,10 +397,18 @@ export default function TripView({
                 {editUnlocked ? '编辑模式' : syncStatus}
               </span>
             )}
+            {viewers.length > 1 && (
+              <span
+                className="pill bg-white/13 border-white/22 text-white/90 hero-pill"
+                title={viewers.map((v) => `${v.name}${v.editing ? '（编辑中）' : ''}`).join('、')}
+              >
+                👀 {viewers.length} 人在线{viewers.some((v) => v.editing) ? ' · 有人正在编辑' : ''}
+              </span>
+            )}
           </div>
 
           {/* Toolbar */}
-          <div className="flex flex-wrap items-center gap-2 mt-5 pt-5 border-t border-white/14">
+          <div className="no-print flex flex-wrap items-center gap-2 mt-5 pt-5 border-t border-white/14">
             {!readOnly && (!shareToken && role === 'owner' || shareToken && sharePermission === 'edit') && (
               <button
                 className={`btn text-[13px] px-3.5 py-2 transition-all duration-150 ${
@@ -389,7 +455,7 @@ export default function TripView({
             </button>
             <button
               className="btn bg-white/10 border-white/20 text-white/88 text-[13px] px-3.5 py-2 hover:bg-white/20 hover:border-white/40 hover:text-white hover:-translate-y-px"
-              onClick={() => window.print()}
+              onClick={handlePrint}
             >
               🖨 打印
             </button>
@@ -428,13 +494,16 @@ export default function TripView({
         <aside className="trip-sidebar" aria-label="行程侧栏">
           <p className="text-[11px] font-bold tracking-[0.12em] text-muted uppercase mb-2">每天安排</p>
           {state.days.length
-            ? state.days.map((day, i) => <a key={i} href={`#day-${i + 1}`}>D{i + 1} · {day.title}</a>)
+            ? state.days.map((day, i) => {
+                const d = dayDate(currentTrip.start_date, i);
+                return <a key={i} href={`#day-${i + 1}`}>D{i + 1}{d ? ` · ${formatDateWithWeekday(d)}` : ''} · {day.title}</a>;
+              })
             : <p className="text-muted text-[12.5px] px-2.5">还没有安排 Day</p>}
         </aside>
         <div className="min-w-0">
-          <div id="overview" className="scroll-mt-32"><Dashboard state={state} description={currentTrip.description} total={total} done={done} destination={currentTrip.destination} startDate={currentTrip.start_date} endDate={currentTrip.end_date} /></div>
+          <div id="overview" className="scroll-mt-32"><Dashboard state={state} description={currentTrip.description} total={total} done={done} startDate={currentTrip.start_date} endDate={currentTrip.end_date} weather={weather} /></div>
           <div id="prepare" className="scroll-mt-32"><Checklist state={state} editUnlocked={editUnlocked} mutate={mutate} /></div>
-          <div id="itinerary" className="scroll-mt-32"><DaysSection state={state} editUnlocked={editUnlocked} mutate={mutate} mutateNoSave={mutateNoSave} onCollapseAll={() => mutateNoSave((s) => { s.days.forEach((_, i) => { s.collapsed[i] = true; }); })} /></div>
+          <div id="itinerary" className="scroll-mt-32"><DaysSection state={state} editUnlocked={editUnlocked} mutate={mutate} mutateNoSave={mutateNoSave} startDate={currentTrip.start_date} weather={weather} onCollapseAll={() => mutateNoSave((s) => { s.days.forEach((_, i) => { s.collapsed[i] = true; }); })} /></div>
           <div id="stay" className="scroll-mt-32"><HotelsSection state={state} editUnlocked={editUnlocked} mutate={mutate} /></div>
           <div id="currency" className="scroll-mt-32"><CurrencySection state={state} homeCurrency={currentTrip.home_currency} mutate={mutate} /></div>
           <div id="transport" className="scroll-mt-32"><TransportSection state={state} editUnlocked={editUnlocked} mutate={mutate} homeCurrency={currentTrip.home_currency} /></div>
@@ -446,7 +515,7 @@ export default function TripView({
       {/* ── FAB save ── */}
       {editUnlocked && (
         <button
-          className={`fixed right-5 bottom-5 z-[60] rounded-full px-5 py-3 text-[13.5px] font-bold shadow-md transition-all duration-150 flex items-center gap-1.5 ${hasUnsavedChanges ? 'bg-coral text-white hover:bg-danger' : 'bg-jade-dark text-white hover:bg-jade'} disabled:opacity-70`}
+          className={`no-print fixed right-5 bottom-5 z-[60] rounded-full px-5 py-3 text-[13.5px] font-bold shadow-md transition-all duration-150 flex items-center gap-1.5 ${hasUnsavedChanges ? 'bg-coral text-white hover:bg-danger' : 'bg-jade-dark text-white hover:bg-jade'} disabled:opacity-70`}
           onClick={saveRemote}
           disabled={!hasUnsavedChanges || isSaving}
           title={hasUnsavedChanges ? '保存未保存的修改' : '当前没有未保存的修改'}
@@ -455,7 +524,7 @@ export default function TripView({
         </button>
       )}
 
-      {showTop && <button className="fixed right-5 bottom-20 z-[60] btn-primary rounded-full shadow-md" onClick={() => window.scrollTo({ top: 0, behavior: 'smooth' })} aria-label="回到顶部">↑ 顶部</button>}
+      {showTop && <button className="no-print fixed right-5 bottom-20 z-[60] btn-primary rounded-full shadow-md" onClick={() => window.scrollTo({ top: 0, behavior: 'smooth' })} aria-label="回到顶部">↑ 顶部</button>}
 
       {showSettings && (
         <SettingsModal

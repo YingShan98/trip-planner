@@ -122,7 +122,12 @@ export default function PackingModal({
 
   const clearDone = () => mutate((d) => { d.packing = d.packing.filter((x) => !x.done); });
 
-  const grouped = CATEGORIES.map((cat) => ({
+  const presentCategories = Array.from(new Set(packing.map((x) => x.category)));
+  const orderedCategories = [
+    ...CATEGORIES.filter((cat) => presentCategories.includes(cat)),
+    ...presentCategories.filter((cat) => !(CATEGORIES as readonly string[]).includes(cat)),
+  ];
+  const grouped = orderedCategories.map((cat) => ({
     cat,
     items: packing.map((x, i) => ({ ...x, idx: i })).filter((x) => x.category === cat),
   })).filter((g) => g.items.length > 0);
@@ -172,7 +177,7 @@ export default function PackingModal({
           {grouped.map(({ cat, items }) => (
             <div key={cat}>
               <p className="text-[11.5px] font-semibold text-muted uppercase tracking-[0.06em] mb-1.5">
-                {CATEGORY_ICONS[cat]} {cat}
+                {CATEGORY_ICONS[cat] ?? '📦'} {cat}
                 <span className="ml-1.5 normal-case font-normal">
                   ({items.filter((x) => x.done).length}/{items.length})
                 </span>
@@ -197,7 +202,7 @@ export default function PackingModal({
                       {x.text}
                     </span>
                     {editUnlocked && (
-                      <button className="btn-mini edit-only" onClick={() => remove(x.idx)}>×</button>
+                      <button aria-label={`删除物品「${x.text || cat}」`} className="btn-mini edit-only" onClick={() => remove(x.idx)}>×</button>
                     )}
                   </div>
                 ))}

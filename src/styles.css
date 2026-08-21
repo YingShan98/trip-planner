@@ -266,13 +266,14 @@
    ═══════════════════════════════════════════════════════════ */
 @media print {
   body { background: #fff !important; }
-  .no-print, header.topbar, .trip-toolbar, .sticky-save,
-  .edit-only, .modal, .toast, .edit-banner { display: none !important; }
+  .no-print, .trip-nav, .trip-sidebar,
+  .edit-only, .modal, .toast { display: none !important; }
   .trip-hero { color: #000 !important; background: #fff !important; border-bottom: 2px solid #333; }
+  .trip-hero * { text-shadow: none !important; }
+  .trip-hero .absolute { display: none !important; }
   .hero-pill  { background: #f0f0f0 !important; color: #333 !important; border-color: #ccc !important; }
-  .content    { padding: 0 !important; }
-  .day-body   { display: block !important; }
-  .card-shadow { box-shadow: none !important; border: 1px solid #ddd !important; }
+  .trip-layout { display: block !important; }
+  article, section { box-shadow: none !important; break-inside: avoid; }
 }
 
 /* ═══════════════════════════════════════════════════════════

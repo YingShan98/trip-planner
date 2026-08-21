@@ -3,7 +3,7 @@ import type { ChangeEvent } from 'react';
 import { sb } from '../lib/supabase';
 import { toast } from '../lib/toast';
 import { confirmDialog } from '../lib/confirm';
-import { dateRange } from '../lib/format';
+import { dateRange, tripCountdown, tripCountdownLabel, type TripPhase } from '../lib/format';
 import { downloadJSON } from '../lib/download';
 import { createViewShare, deleteTrip } from '../lib/tripApi';
 import { normalize, templateState } from '../state';
@@ -19,6 +19,8 @@ export default function HomeView({
 }) {
   const [trips, setTrips] = useState<TripListRow[]>([]);
   const [importPayload, setImportPayload] = useState<{ meta: ImportedTripMeta; data: TripState } | null>(null);
+  const [search, setSearch] = useState('');
+  const [sortByDeparture, setSortByDeparture] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   const loadTrips = async () => {
@@ -72,6 +74,22 @@ export default function HomeView({
     }
   };
 
+  const q = search.trim().toLowerCase();
+  const visibleTrips = q
+    ? trips.filter((t) => t.title.toLowerCase().includes(q) || (t.destination || '').toLowerCase().includes(q))
+    : trips;
+  const PHASE_RANK: Record<TripPhase, number> = { ongoing: 0, upcoming: 1, undated: 2, past: 3 };
+  const sortedTrips = sortByDeparture
+    ? [...visibleTrips].sort((a, b) => {
+        const ca = tripCountdown(a.start_date, a.end_date);
+        const cb = tripCountdown(b.start_date, b.end_date);
+        if (PHASE_RANK[ca.phase] !== PHASE_RANK[cb.phase]) return PHASE_RANK[ca.phase] - PHASE_RANK[cb.phase];
+        if (ca.phase === 'upcoming') return (a.start_date || '').localeCompare(b.start_date || '');
+        if (ca.phase === 'past') return (b.start_date || '').localeCompare(a.start_date || '');
+        return 0;
+      })
+    : visibleTrips;
+
   return (
     <main className="max-w-[1200px] mx-auto">
 
@@ -103,17 +121,37 @@ export default function HomeView({
         <div className="flex justify-between items-center gap-2.5 pb-3.5 mb-4 border-b-2 border-line flex-wrap">
           <h2 className="font-serif text-[19px] font-bold text-jade-dark">旅程收藏</h2>
           <div className="flex flex-wrap gap-2 items-center">
-            <span className="text-muted text-[13px]">{trips.length} 个旅行</span>
+            <span className="text-muted text-[13px]">{sortedTrips.length} / {trips.length} 个旅行</span>
             {isAuthenticated && <><button className="btn-ghost" onClick={downloadTemplate}>下载模板</button><button className="btn-ghost" onClick={() => fileInputRef.current?.click()}>导入 JSON</button></>}
             <input ref={fileInputRef} type="file" accept="application/json,.json" className="hidden" onChange={handleFileChange} />
           </div>
         </div>
 
+        {trips.length > 0 && (
+          <div className="flex flex-wrap gap-2.5 items-center mb-4">
+            <input
+              className="inp flex-1 min-w-[180px] max-w-[320px]"
+              placeholder="搜索旅行名称或目的地…"
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+              aria-label="搜索旅行"
+            />
+            <button
+              className={`btn-mini ${sortByDeparture ? 'bg-jade-dark !text-white border-jade-dark' : ''}`}
+              onClick={() => setSortByDeparture((v) => !v)}
+            >
+              🗓️ 按出发日期排序{sortByDeparture ? '（已开启）' : ''}
+            </button>
+          </div>
+        )}
+
         {trips.length === 0 ? (
           <div className="empty-state">还没有保存的旅程。<br />创建第一段旅程，和同行的人一起开始安排吧。</div>
+        ) : sortedTrips.length === 0 ? (
+          <div className="empty-state">没有找到匹配「{search}」的旅行。</div>
         ) : (
           <div className="grid grid-cols-[repeat(auto-fill,minmax(280px,1fr))] gap-4">
-            {trips.map((t) => (
+            {sortedTrips.map((t) => (
               <article
                 key={t.slug}
                 className="bg-surface border border-line rounded-lg overflow-hidden shadow-sm flex flex-col transition-all duration-150 hover:shadow-md hover:-translate-y-0.5"
@@ -137,6 +175,9 @@ export default function HomeView({
                       <span className="pill">📍 {t.destination || '目的地待定'}</span>
                       <span className="pill">📅 {dateRange(t)}</span>
                       <span className="pill">💰 {t.home_currency || 'MYR'}</span>
+                      {(tripCountdown(t.start_date, t.end_date).phase === 'upcoming' || tripCountdown(t.start_date, t.end_date).phase === 'ongoing') && (
+                        <span className="pill bg-jade-tint border-jade-tint text-jade-dark font-semibold">🗓️ {tripCountdownLabel(t.start_date, t.end_date)}</span>
+                      )}
                     </div>
                   </div>
                   {t.description && (
