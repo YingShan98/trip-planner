@@ -1,11 +1,11 @@
 import { useState } from 'react';
 import { toast } from '../../lib/toast';
 import { blankState } from '../../state';
-import { createV2Trip } from '../../lib/v2Trip';
+import { createTrip } from '../../lib/tripApi';
 import type { ImportedTripMeta, TripState } from '../../types';
 import Modal from '../Modal';
 
-export default function V2NewTripModal({ onClose, onCreated, initialMeta, initialData }: {
+export default function NewTripModal({ onClose, onCreated, initialMeta, initialData }: {
   onClose: () => void;
   onCreated: (slug: string) => void;
   initialMeta?: ImportedTripMeta;
@@ -25,7 +25,7 @@ export default function V2NewTripModal({ onClose, onCreated, initialMeta, initia
     if (!cleanSlug || !title.trim()) { toast('请填写旅行名称和 Slug'); return; }
     setBusy(true);
     try {
-      const createdSlug = await createV2Trip({
+      const createdSlug = await createTrip({
         slug: cleanSlug, title: title.trim(), destination: destination.trim(), start_date: start || null,
         end_date: end || null, home_currency: currency.trim() || 'MYR', description, state: initialData || blankState(),
       });

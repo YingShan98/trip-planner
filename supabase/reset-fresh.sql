@@ -1,9 +1,9 @@
--- DESTRUCTIVE: reset the entire Trip Planner database for a fresh v2 install.
--- Export any data you need first. Run schema-v2.sql and all v2 migrations afterwards.
+-- DESTRUCTIVE: reset the entire Trip Planner database for a fresh install.
+-- Export any data you need first. Run schema.sql and all migrations afterwards.
 
 begin;
 
--- Legacy v1 tables and functions.
+-- Legacy pre-normalization tables and functions.
 drop table if exists public.trip_documents cascade;
 drop table if exists public.trip_secrets cascade;
 drop table if exists public.app_settings cascade;

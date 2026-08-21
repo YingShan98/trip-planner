@@ -3,11 +3,13 @@ import type { User } from '@supabase/supabase-js';
 import HomeView from './components/HomeView';
 import TripView from './components/trip/TripView';
 import Toast from './components/Toast';
-import NewTripModal from './components/modals/V2NewTripModal';
+import ConfirmDialog from './components/ConfirmDialog';
+import NewTripModal from './components/modals/NewTripModal';
 import ConfigMissingModal from './components/modals/ConfigMissingModal';
 import AuthControl from './components/AuthControl';
 import { hasConfig, sb } from './lib/supabase';
 import { isAnonymousUser } from './lib/guestAuth';
+import { toast } from './lib/toast';
 
 function getSlugFromURL(): string | null {
   return new URL(location.href).searchParams.get('trip');
@@ -54,7 +56,7 @@ export default function App() {
   const openTrip = useCallback((newSlug: string) => { setURL(newSlug); setSlug(newSlug); }, []);
 
   const handleNewTrip = () => {
-    if (!hasConfig) { alert('请先配置 .env。'); return; }
+    if (!hasConfig) { toast('请先配置 .env。'); return; }
     if (!user) return;
     setShowNewTrip(true);
   };
@@ -103,6 +105,7 @@ export default function App() {
       {showConfigMissing && <ConfigMissingModal onClose={() => setShowConfigMissing(false)} />}
 
       <Toast />
+      <ConfirmDialog />
     </div>
   );
 }

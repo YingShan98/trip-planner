@@ -1,13 +1,14 @@
 import { useState } from 'react';
 import { sb } from '../../lib/supabase';
 import { toast } from '../../lib/toast';
-import { revokeV2Shares, type V2TripMeta } from '../../lib/v2Trip';
+import { confirmDialog } from '../../lib/confirm';
+import { revokeShares, type TripMeta } from '../../lib/tripApi';
 import Modal from '../Modal';
 
-export default function V2SettingsModal({ trip, onClose, onSaved }: {
-  trip: V2TripMeta;
+export default function SettingsModal({ trip, onClose, onSaved }: {
+  trip: TripMeta;
   onClose: () => void;
-  onSaved: (changes: Partial<V2TripMeta>) => void;
+  onSaved: (changes: Partial<TripMeta>) => void;
 }) {
   const [title, setTitle] = useState(trip.title);
   const [destination, setDestination] = useState(trip.destination);
@@ -32,10 +33,10 @@ export default function V2SettingsModal({ trip, onClose, onSaved }: {
     onClose();
   };
 
-  const revokeShares = async () => {
-    if (!confirm('撤销这趟旅行的所有安全分享链接？已复制的链接将立即失效。')) return;
+  const handleRevokeShares = async () => {
+    if (!await confirmDialog('撤销这趟旅行的所有安全分享链接？已复制的链接将立即失效。', { title: '撤销分享链接', confirmLabel: '撤销', danger: true })) return;
     setRevoking(true);
-    try { const count = await revokeV2Shares(trip.id); toast(count ? `已撤销 ${count} 个分享链接` : '没有需要撤销的分享链接'); }
+    try { const count = await revokeShares(trip.id); toast(count ? `已撤销 ${count} 个分享链接` : '没有需要撤销的分享链接'); }
     catch (error) { toast('撤销失败：' + (error as Error).message); }
     finally { setRevoking(false); }
   };
@@ -56,7 +57,7 @@ export default function V2SettingsModal({ trip, onClose, onSaved }: {
       <div className="flex justify-end mt-5 pt-4 border-t border-line"><button className="btn-primary" onClick={save}>保存设置</button></div>
       <div className="mt-4 pt-4 border-t border-line">
         <p className="text-[12px] font-semibold text-muted mb-2">安全分享</p>
-        <button className="btn-danger" disabled={revoking} onClick={revokeShares}>{revoking ? '撤销中…' : '撤销所有分享链接'}</button>
+        <button className="btn-danger" disabled={revoking} onClick={handleRevokeShares}>{revoking ? '撤销中…' : '撤销所有分享链接'}</button>
       </div>
     </Modal>
   );

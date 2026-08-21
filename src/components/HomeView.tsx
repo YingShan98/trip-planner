@@ -2,12 +2,13 @@ import { useEffect, useRef, useState } from 'react';
 import type { ChangeEvent } from 'react';
 import { sb } from '../lib/supabase';
 import { toast } from '../lib/toast';
+import { confirmDialog } from '../lib/confirm';
 import { dateRange } from '../lib/format';
 import { downloadJSON } from '../lib/download';
-import { createV2ViewShare, deleteV2Trip } from '../lib/v2Trip';
+import { createViewShare, deleteTrip } from '../lib/tripApi';
 import { normalize, templateState } from '../state';
 import type { ImportedTripMeta, TripListRow, TripState } from '../types';
-import NewTripModal from './modals/V2NewTripModal';
+import NewTripModal from './modals/NewTripModal';
 
 export default function HomeView({
   onOpenTrip, onNewTrip, isAuthenticated,
@@ -27,14 +28,14 @@ export default function HomeView({
       .select('id,slug,title,destination,start_date,end_date,home_currency,description,updated_at')
       .order('updated_at', { ascending: false });
     if (error) { toast('无法读取旅行列表：' + error.message); return; }
-    setTrips((data || []).map((trip) => ({ ...trip, currency: trip.home_currency })) as TripListRow[]);
+    setTrips((data || []) as TripListRow[]);
   };
 
   useEffect(() => { loadTrips(); }, [isAuthenticated]);
 
   const handleDelete = async (slug: string) => {
-    if (!confirm('删除这趟旅行？此操作不可恢复。')) return;
-    try { await deleteV2Trip(slug); toast('旅行已删除'); await loadTrips(); }
+    if (!await confirmDialog('删除这趟旅行？此操作不可恢复。', { title: '删除旅行', confirmLabel: '删除', danger: true })) return;
+    try { await deleteTrip(slug); toast('旅行已删除'); await loadTrips(); }
     catch (error) { toast('删除失败：' + (error as Error).message); }
   };
 
@@ -42,7 +43,7 @@ export default function HomeView({
     try {
       const trip = trips.find((item) => item.slug === slug);
       if (!trip) return;
-      const token = await createV2ViewShare(trip.id);
+      const token = await createViewShare(trip.id);
       const url = new URL(location.href);
       url.searchParams.delete('trip');
       url.searchParams.delete('readonly');
@@ -126,7 +127,7 @@ export default function HomeView({
                     <div className="flex flex-wrap gap-1.5">
                       <span className="pill">📍 {t.destination || '目的地待定'}</span>
                       <span className="pill">📅 {dateRange(t)}</span>
-                      <span className="pill">💰 {t.currency || 'MYR'}</span>
+                      <span className="pill">💰 {t.home_currency || 'MYR'}</span>
                     </div>
                   </div>
                   {t.description && (

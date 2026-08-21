@@ -1,5 +1,5 @@
--- Trip Planner v2 normalized schema.
--- Run supabase/reset-v2.sql first only when you are ready to remove v2 data.
+-- Trip Planner normalized schema.
+-- Run supabase/reset-fresh.sql first only when you are ready to wipe existing data.
 -- This schema intentionally keeps owner_id nullable during the transition to Supabase Auth.
 
 create extension if not exists pgcrypto;

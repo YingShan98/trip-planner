@@ -163,7 +163,7 @@ seed/guangzhou-family-trip-2027.json
 
 前端只使用 publishable/anon key。所有写入由 Supabase Auth 和 RLS 保护。service-role key 不需要放入本项目或部署环境。
 
-## v2 数据库（规范化结构）
+## 数据库结构（规范化 schema）
 
 `supabase/migrations` 是数据库变更的版本记录，包含表、RLS、角色权限、事务保存和安全分享 RPC。当前迁移会保留已有旅行数据，并加入访客身份与编辑历史能力。
 

@@ -105,7 +105,7 @@ export interface TripListRow {
   destination: string;
   start_date: string | null;
   end_date: string | null;
-  currency: string;
+  home_currency: string;
   description: string;
   updated_at: string;
 }

@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import Modal from '../Modal';
 import { uid } from '../../state';
+import { confirmDialog } from '../../lib/confirm';
 import type { Mutate, PackingItem, TripState } from '../../types';
 
 const CATEGORIES = ['衣物', '洗漱用品', '证件', '电子产品', '药品', '其他'] as const;
@@ -114,8 +115,8 @@ export default function PackingModal({
     setNewText('');
   };
 
-  const applyTemplate = (items: TemplateItem[]) => {
-    if (packing.length > 0 && !confirm('应用模板将替换现有的打包清单，确认继续？')) return;
+  const applyTemplate = async (items: TemplateItem[]) => {
+    if (packing.length > 0 && !await confirmDialog('应用模板将替换现有的打包清单，确认继续？', { title: '应用打包模板' })) return;
     mutate((d) => { d.packing = items.map((x) => ({ ...x, id: uid('p') })); });
   };
 

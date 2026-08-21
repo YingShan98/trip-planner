@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { defaultActivity, defaultDay } from '../../state';
 import type { Activity, Day, Intensity, Mutate, TripState } from '../../types';
+import { confirmDialog } from '../../lib/confirm';
 import MarkdownText from '../MarkdownText';
 
 const TIME_OPTIONS = ['清晨', '上午', '午间', '下午', '傍晚', '晚间', '全天'];
@@ -145,7 +146,7 @@ function DayCard({ d, i, total, collapsed, editUnlocked, mutate, mutateNoSave }:
               <button className="btn-mini edit-only" disabled={i === 0} onClick={() => moveDay(-1)}>↑</button>
               <button className="btn-mini edit-only" disabled={i === total - 1} onClick={() => moveDay(1)}>↓</button>
               <button className="btn-mini edit-only"
-                onClick={() => { if (!confirm('删除这个 Day？')) return; mutate((s) => { s.days.splice(i, 1); s.days.forEach((day, k) => (day.n = k + 1)); }); }}>
+                onClick={async () => { if (!await confirmDialog('删除这个 Day？', { title: '删除 Day', confirmLabel: '删除', danger: true })) return; mutate((s) => { s.days.splice(i, 1); s.days.forEach((day, k) => (day.n = k + 1)); }); }}>
                 ×
               </button>
             </>

@@ -1,9 +1,10 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { sb } from '../../lib/supabase';
 import { toast } from '../../lib/toast';
+import { confirmDialog } from '../../lib/confirm';
 import { dateRange } from '../../lib/format';
 import { downloadJSON } from '../../lib/download';
-import { createV2Share, deleteV2Trip, getV2TripRole, loadV2SharedTrip, loadV2Trip, saveV2SharedTrip, saveV2Trip, type V2TripMeta } from '../../lib/v2Trip';
+import { createShare, deleteTrip, getTripRole, loadSharedTrip, loadTrip, saveSharedTrip, saveTrip, type TripMeta } from '../../lib/tripApi';
 import { ensureGuestSession, getTripEditEvents, isAnonymousUser, setGuestName, type TripEditEvent } from '../../lib/guestAuth';
 import type { TripState } from '../../types';
 import { parseRate } from '../../lib/currency';
@@ -15,7 +16,7 @@ import CurrencySection from './CurrencySection';
 import TransportSection from './TransportSection';
 import BudgetSection from './BudgetSection';
 import NotesSection from './NotesSection';
-import V2SettingsModal from '../modals/V2SettingsModal';
+import SettingsModal from '../modals/SettingsModal';
 import Modal from '../Modal';
 import GuestIdentityModal from '../modals/GuestIdentityModal';
 import EditHistoryModal from '../modals/EditHistoryModal';
@@ -28,12 +29,17 @@ function buildShareLink(token: string): string {
   return u.toString();
 }
 
+const SECTIONS = [
+  ['overview', '概览'], ['prepare', '准备'], ['itinerary', '行程'],
+  ['stay', '住宿'], ['currency', '汇率'], ['transport', '交通'], ['budget', '预算'], ['notes', '讨论'],
+] as const;
+
 export default function TripView({
   slug, readOnly = false, shareToken, onHome, onDeleted,
 }: {
   slug: string; readOnly?: boolean; shareToken?: string | null; onHome: () => void; onDeleted: () => void;
 }) {
-  const [currentTrip, setCurrentTrip]       = useState<V2TripMeta | null>(null);
+  const [currentTrip, setCurrentTrip]       = useState<TripMeta | null>(null);
   const [state, setState]                   = useState<TripState | null>(null);
   const [editUnlocked, setEditUnlockedState] = useState(false);
   const [syncStatus, setSyncStatus]         = useState('在线同步中');
@@ -49,6 +55,7 @@ export default function TripView({
   const [editEvents, setEditEvents] = useState<TripEditEvent[] | null>(null);
   const [hasUnsavedChanges, setHasUnsavedChanges] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
+  const [activeSection, setActiveSection] = useState<string>(SECTIONS[0][0]);
 
   const editUnlockedRef  = useRef(false);
   const hasUnsavedChangesRef = useRef(false);
@@ -67,14 +74,14 @@ export default function TripView({
     (async () => {
       if (!sb) return;
       try {
-        const workspace = shareToken ? await loadV2SharedTrip(shareToken) : await loadV2Trip(slug);
+        const workspace = shareToken ? await loadSharedTrip(shareToken) : await loadTrip(slug);
         if (cancelled) return;
         setCurrentTrip(workspace.trip);
         setState(workspace.state);
         setSharePermission(workspace.sharePermission || null);
         if (!shareToken) {
           const { data: userData } = await sb.auth.getUser();
-          setRole(userData.user ? await getV2TripRole(workspace.trip.id) : null);
+          setRole(userData.user ? await getTripRole(workspace.trip.id) : null);
         } else setRole(null);
       } catch (error) {
         if (!cancelled) toast('无法打开旅行：' + (error as Error).message);
@@ -93,14 +100,14 @@ export default function TripView({
     const reload = async () => {
       if (editUnlockedRef.current && (saveInFlightRef.current || hasUnsavedChangesRef.current)) return;
       try {
-        const workspace = shareToken ? await loadV2SharedTrip(shareToken) : await loadV2Trip(slug);
+        const workspace = shareToken ? await loadSharedTrip(shareToken) : await loadTrip(slug);
         setCurrentTrip(workspace.trip);
         setState(workspace.state);
         toast('行程已更新');
       } catch (error) { toast('同步失败：' + (error as Error).message); }
     };
     const channel = client
-      .channel('v2-trip:' + slug)
+      .channel('trip:' + slug)
       .on('postgres_changes', { event: '*', schema: 'public', table: 'trips', filter: `slug=eq.${slug}` }, reload)
       .on('postgres_changes', { event: '*', schema: 'public', table: 'trip_days' }, reload)
       .on('postgres_changes', { event: '*', schema: 'public', table: 'activities' }, reload)
@@ -119,8 +126,8 @@ export default function TripView({
     setSyncStatus('保存中…');
     try {
       if (!stateRef.current) throw new Error('没有可保存的行程');
-      if (shareToken) await saveV2SharedTrip(shareToken, stateRef.current);
-      else await saveV2Trip(slug, stateRef.current);
+      if (shareToken) await saveSharedTrip(shareToken, stateRef.current);
+      else await saveTrip(slug, stateRef.current);
       setHasUnsavedChanges(false);
       setSyncStatus('已同步');
       toast('已同步');
@@ -146,7 +153,7 @@ export default function TripView({
 
   const toggleEdit = async () => {
     if (editUnlocked) {
-      if (hasUnsavedChanges && !confirm('还有未保存的修改，确定退出编辑模式吗？')) return;
+      if (hasUnsavedChanges && !await confirmDialog('还有未保存的修改，确定退出编辑模式吗？', { title: '退出编辑模式', confirmLabel: '退出' })) return;
       setEditUnlocked(false);
       return;
     }
@@ -176,8 +183,8 @@ export default function TripView({
     } catch (error) { toast('访客身份保存失败：' + (error as Error).message); }
   };
 
-  const leaveTrip = () => {
-    if (hasUnsavedChanges && !confirm('还有未保存的修改，确定离开吗？')) return;
+  const leaveTrip = async () => {
+    if (hasUnsavedChanges && !await confirmDialog('还有未保存的修改，确定离开吗？', { title: '离开旅行', confirmLabel: '离开' })) return;
     onHome();
   };
 
@@ -187,12 +194,16 @@ export default function TripView({
     catch (error) { toast('无法读取编辑记录：' + (error as Error).message); }
   };
 
-  const handleDeleteCurrent = async () => { if (await deleteV2Trip(slug)) onDeleted(); };
+  const handleDeleteCurrent = async () => {
+    if (!currentTrip) return;
+    if (!await confirmDialog(`删除「${currentTrip.title}」？此操作不可恢复，所有行程内容都会被永久删除。`, { title: '删除旅行', confirmLabel: '删除', danger: true })) return;
+    if (await deleteTrip(slug)) onDeleted();
+  };
 
   const createShareLink = async () => {
     try {
       const expiresAt = shareMode === 'view' || shareExpiry === '0' ? null : new Date(Date.now() + Number(shareExpiry) * 86400000).toISOString();
-      const token = await createV2Share(currentTrip?.id || '', shareMode, expiresAt);
+      const token = await createShare(currentTrip?.id || '', shareMode, expiresAt);
       await navigator.clipboard.writeText(buildShareLink(token));
       toast(`${shareMode === 'edit' ? '可编辑' : '只读'}分享链接已复制${expiresAt ? `，${shareExpiry}天后过期` : ''}`);
       setShowShare(false);
@@ -204,6 +215,34 @@ export default function TripView({
     window.addEventListener('scroll', onScroll, { passive: true });
     return () => window.removeEventListener('scroll', onScroll);
   }, []);
+
+  /* ── Scroll-spy for section nav ──
+     IntersectionObserver only reports elements whose intersection just changed, so we
+     use it purely as a "something moved" trigger and recompute the active section from
+     every section's live position — otherwise a section that stays intersecting across
+     a navigation (e.g. jumping back to the top) leaves activeSection stale. */
+  useEffect(() => {
+    if (!currentTrip || !state) return;
+    const ids = SECTIONS.map(([id]) => id);
+    const NAV_OFFSET = 150;
+
+    const recompute = () => {
+      let current = ids[0];
+      for (const id of ids) {
+        const el = document.getElementById(id);
+        if (el && el.getBoundingClientRect().top <= NAV_OFFSET) current = id;
+      }
+      setActiveSection(current);
+    };
+
+    const observer = new IntersectionObserver(recompute, { rootMargin: '-150px 0px -65% 0px', threshold: [0, 1] });
+    ids.forEach((id) => {
+      const el = document.getElementById(id);
+      if (el) observer.observe(el);
+    });
+    recompute();
+    return () => observer.disconnect();
+  }, [Boolean(currentTrip), Boolean(state)]);
 
   useEffect(() => {
     const warnBeforeLeave = (event: BeforeUnloadEvent) => {
@@ -280,15 +319,22 @@ export default function TripView({
           </div>
 
           {/* Toolbar */}
-          <div className="flex flex-wrap gap-2 mt-5 pt-5 border-t border-white/14">
+          <div className="flex flex-wrap items-center gap-2 mt-5 pt-5 border-t border-white/14">
             {!readOnly && (!shareToken && role === 'owner' || shareToken && sharePermission === 'edit') && (
               <button
-                className="btn bg-white/10 border-white/20 text-white/88 text-[13px] px-3.5 py-2 hover:bg-white/20 hover:border-white/40 hover:text-white hover:-translate-y-px"
+                className={`btn text-[13px] px-3.5 py-2 transition-all duration-150 ${
+                  editUnlocked
+                    ? 'bg-white/10 border-white/20 text-white/88 hover:bg-white/20 hover:border-white/40 hover:text-white'
+                    : 'bg-white border-white text-jade-dark font-bold hover:bg-white/90 hover:-translate-y-px hover:shadow-md'
+                }`}
                 onClick={toggleEdit}
               >
-                {editUnlocked ? '🔒 锁定编辑' : '🔓 编辑'}
+                {editUnlocked ? '🔒 锁定编辑' : '🔓 开始编辑'}
               </button>
             )}
+
+            <span className="w-px h-5 bg-white/15 hidden sm:block" />
+
             {!readOnly && !shareToken && (
               <button
                 className="btn bg-white/10 border-white/20 text-white/88 text-[13px] px-3.5 py-2 hover:bg-white/20 hover:border-white/40 hover:text-white hover:-translate-y-px"
@@ -297,18 +343,6 @@ export default function TripView({
                 ⚙️ 旅行设置
               </button>
             )}
-            <button
-              className="btn bg-white/10 border-white/20 text-white/88 text-[13px] px-3.5 py-2 hover:bg-white/20 hover:border-white/40 hover:text-white hover:-translate-y-px"
-              onClick={exportJSON}
-            >
-              ⬇️ 导出 JSON
-            </button>
-            <button
-              className="btn bg-white/10 border-white/20 text-white/88 text-[13px] px-3.5 py-2 hover:bg-white/20 hover:border-white/40 hover:text-white hover:-translate-y-px"
-              onClick={() => window.print()}
-            >
-              🖨 打印
-            </button>
             {!shareToken && role === 'owner' && <button
               className="btn bg-white/10 border-white/20 text-white/88 text-[13px] px-3.5 py-2 hover:bg-white/20 hover:border-white/40 hover:text-white hover:-translate-y-px"
               onClick={() => setShowShare(true)}
@@ -321,6 +355,22 @@ export default function TripView({
             >
               🧾 编辑记录
             </button>}
+
+            <span className="w-px h-5 bg-white/15 hidden sm:block" />
+
+            <button
+              className="btn bg-white/10 border-white/20 text-white/88 text-[13px] px-3.5 py-2 hover:bg-white/20 hover:border-white/40 hover:text-white hover:-translate-y-px"
+              onClick={exportJSON}
+            >
+              ⬇️ 导出 JSON
+            </button>
+            <button
+              className="btn bg-white/10 border-white/20 text-white/88 text-[13px] px-3.5 py-2 hover:bg-white/20 hover:border-white/40 hover:text-white hover:-translate-y-px"
+              onClick={() => window.print()}
+            >
+              🖨 打印
+            </button>
+
             <span className="flex-1" />
             {!readOnly && !shareToken && role === 'owner' && (
               <button
@@ -336,11 +386,14 @@ export default function TripView({
 
       <nav aria-label="行程目录" className="trip-nav sticky top-[68px] z-40 bg-surface/94 backdrop-blur-md border-b border-line shadow-xs overflow-x-auto">
         <div className="max-w-[1200px] mx-auto px-6 flex items-center gap-1 min-w-max">
-          {[
-            ['overview', '概览'], ['prepare', '准备'], ['itinerary', '行程'],
-            ['stay', '住宿'], ['currency', '汇率'], ['transport', '交通'], ['budget', '预算'], ['notes', '讨论'],
-          ].map(([id, label]) => (
-            <a key={id} href={`#${id}`} className="px-3.5 py-3 text-[12.5px] font-semibold text-muted border-b-2 border-transparent hover:text-jade hover:border-jade no-underline transition-colors">
+          {SECTIONS.map(([id, label]) => (
+            <a
+              key={id}
+              href={`#${id}`}
+              className={`px-3.5 py-3 text-[12.5px] font-semibold border-b-2 no-underline transition-colors ${
+                activeSection === id ? 'text-jade border-jade' : 'text-muted border-transparent hover:text-jade hover:border-jade'
+              }`}
+            >
               {label}
             </a>
           ))}
@@ -350,10 +403,10 @@ export default function TripView({
       {/* ── Content ── */}
       <div className="trip-layout max-w-[1200px] mx-auto px-6 pb-24">
         <aside className="trip-sidebar" aria-label="行程侧栏">
-          <p className="text-[11px] font-bold tracking-[0.12em] text-muted uppercase mb-2">行程目录</p>
-          {[['overview', '概览'], ['prepare', '准备'], ['itinerary', '行程'], ['stay', '住宿'], ['currency', '汇率'], ['transport', '交通'], ['budget', '预算'], ['notes', '讨论']].map(([id, label]) => <a key={id} href={`#${id}`}>{label}</a>)}
-          <p className="text-[11px] font-bold tracking-[0.12em] text-muted uppercase mt-5 mb-2">每天安排</p>
-          {state.days.map((day, i) => <a key={i} href={`#day-${i + 1}`}>D{i + 1} · {day.title}</a>)}
+          <p className="text-[11px] font-bold tracking-[0.12em] text-muted uppercase mb-2">每天安排</p>
+          {state.days.length
+            ? state.days.map((day, i) => <a key={i} href={`#day-${i + 1}`}>D{i + 1} · {day.title}</a>)
+            : <p className="text-muted text-[12.5px] px-2.5">还没有安排 Day</p>}
         </aside>
         <div className="min-w-0">
           <div id="overview" className="scroll-mt-32"><Dashboard state={state} description={currentTrip.description} total={total} done={done} /></div>
@@ -382,7 +435,7 @@ export default function TripView({
       {showTop && <button className="fixed right-5 bottom-20 z-[60] btn-primary rounded-full shadow-md" onClick={() => window.scrollTo({ top: 0, behavior: 'smooth' })} aria-label="回到顶部">↑ 顶部</button>}
 
       {showSettings && (
-        <V2SettingsModal
+        <SettingsModal
           trip={currentTrip}
           onClose={() => setShowSettings(false)}
           onSaved={(changes) => setCurrentTrip((prev) => (prev ? { ...prev, ...changes } : prev))}

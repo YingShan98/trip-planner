@@ -2,7 +2,7 @@ import { sb } from './supabase';
 import { blankState } from '../state';
 import type { Activity, BudgetItem, ChecklistItem, Day, Hotel, LinkItem, NoteItem, PackingItem, TransportItem, TripState } from '../types';
 
-export interface V2TripMeta {
+export interface TripMeta {
   id: string;
   slug: string;
   title: string;
@@ -19,8 +19,8 @@ export interface V2TripMeta {
   updated_at: string;
 }
 
-export interface V2TripWorkspace {
-  trip: V2TripMeta;
+export interface TripWorkspace {
+  trip: TripMeta;
   state: TripState;
   sharePermission?: 'view' | 'edit';
 }
@@ -35,9 +35,9 @@ function result<T>(label: string, response: { data: T | null; error: { message: 
   return response.data as T;
 }
 
-export async function loadV2Trip(slug: string): Promise<V2TripWorkspace> {
+export async function loadTrip(slug: string): Promise<TripWorkspace> {
   const client = requireClient();
-  const trip = result('读取旅行', await client.from('trips').select('*').eq('slug', slug).single()) as V2TripMeta;
+  const trip = result('读取旅行', await client.from('trips').select('*').eq('slug', slug).single()) as TripMeta;
   const days = result('读取行程日', await client.from('trip_days').select('*').eq('trip_id', trip.id).order('day_number')) as Array<Record<string, unknown>>;
   const dayIds = days.map((day) => day.id as string);
   const activities = dayIds.length
@@ -98,46 +98,46 @@ export async function loadV2Trip(slug: string): Promise<V2TripWorkspace> {
   return { trip, state };
 }
 
-async function saveV2TripByRpc(tripId: string, state: TripState, tokenHash?: string): Promise<void> {
+async function saveTripByRpc(tripId: string, state: TripState, tokenHash?: string): Promise<void> {
   const client = requireClient();
   const response = await client.rpc('save_trip_workspace', { p_trip_id: tripId, p_state: state, p_token_hash: tokenHash || null });
   if (response.error || response.data !== true) throw new Error(response.error?.message || '保存失败');
 }
 
-export async function saveV2Trip(slug: string, state: TripState): Promise<void> {
+export async function saveTrip(slug: string, state: TripState): Promise<void> {
   const client = requireClient();
   const trip = result('读取旅行', await client.from('trips').select('id').eq('slug', slug).single()) as { id: string };
-  await saveV2TripByRpc(trip.id, state);
+  await saveTripByRpc(trip.id, state);
 }
 
-export async function saveV2SharedTrip(token: string, state: TripState): Promise<void> {
+export async function saveSharedTrip(token: string, state: TripState): Promise<void> {
   const client = requireClient();
   const tokenHash = await sha256Hex(token);
   const workspace = await client.rpc('get_shared_trip_workspace', { p_token_hash: tokenHash });
   if (workspace.error || !workspace.data) throw new Error(workspace.error?.message || '分享链接无效、已撤销或已过期');
-  const trip = workspace.data as V2TripWorkspace;
+  const trip = workspace.data as TripWorkspace;
   if (trip.sharePermission !== 'edit') throw new Error('此分享链接没有编辑权限');
-  await saveV2TripByRpc(trip.trip.id, state, tokenHash);
+  await saveTripByRpc(trip.trip.id, state, tokenHash);
 }
 
-export async function createV2Trip(input: { slug: string; title: string; destination: string; start_date: string | null; end_date: string | null; home_currency: string; description: string; state: TripState }) {
+export async function createTrip(input: { slug: string; title: string; destination: string; start_date: string | null; end_date: string | null; home_currency: string; description: string; state: TripState }) {
   const client = requireClient();
   const { data: userData, error: userError } = await client.auth.getUser();
   if (userError) throw new Error(`读取登录用户：${userError.message}`);
   if (!userData.user) throw new Error('请先登录');
   const trip = result('创建旅行', await client.from('trips').insert({ owner_id: userData.user.id, slug: input.slug, title: input.title, destination: input.destination, start_date: input.start_date, end_date: input.end_date, home_currency: input.home_currency, description: input.description, visibility: 'public', foreign_currency: input.state.foreignCurrency || '', exchange_rate: input.state.exchangeRate === '' ? null : Number(input.state.exchangeRate) }).select('slug').single()) as { slug: string };
-  await saveV2Trip(trip.slug, input.state);
+  await saveTrip(trip.slug, input.state);
   return trip.slug as string;
 }
 
-export async function deleteV2Trip(slug: string) {
+export async function deleteTrip(slug: string) {
   const client = requireClient();
   const trip = result('读取旅行', await client.from('trips').select('id').eq('slug', slug).single()) as { id: string };
   result('删除旅行', await client.from('trips').delete().eq('id', trip.id));
   return true;
 }
 
-export async function getV2TripRole(tripId: string): Promise<'owner' | 'editor' | 'viewer' | null> {
+export async function getTripRole(tripId: string): Promise<'owner' | 'editor' | 'viewer' | null> {
   const client = requireClient();
   const { data, error } = await client.rpc('trip_role', { p_trip_id: tripId });
   if (error) throw new Error(`读取旅行权限：${error.message}`);
@@ -156,7 +156,7 @@ async function sha256Hex(value: string): Promise<string> {
   return Array.from(new Uint8Array(digest), (byte) => byte.toString(16).padStart(2, '0')).join('');
 }
 
-export async function createV2Share(tripId: string, permission: 'view' | 'edit', expiresAt: string | null): Promise<string> {
+export async function createShare(tripId: string, permission: 'view' | 'edit', expiresAt: string | null): Promise<string> {
   const client = requireClient();
   const bytes = crypto.getRandomValues(new Uint8Array(32));
   const token = toBase64Url(bytes);
@@ -168,20 +168,20 @@ export async function createV2Share(tripId: string, permission: 'view' | 'edit',
   return token;
 }
 
-export async function createV2ViewShare(tripId: string): Promise<string> {
-  return createV2Share(tripId, 'view', null);
+export async function createViewShare(tripId: string): Promise<string> {
+  return createShare(tripId, 'view', null);
 }
 
-export async function loadV2SharedTrip(token: string): Promise<V2TripWorkspace> {
+export async function loadSharedTrip(token: string): Promise<TripWorkspace> {
   const client = requireClient();
   const tokenHash = await sha256Hex(token);
   const { data, error } = await client.rpc('get_shared_trip_workspace', { p_token_hash: tokenHash });
   if (error) throw new Error(`读取分享行程：${error.message}`);
   if (!data) throw new Error('分享链接无效、已撤销或已过期');
-  return data as V2TripWorkspace;
+  return data as TripWorkspace;
 }
 
-export async function revokeV2Shares(tripId: string): Promise<number> {
+export async function revokeShares(tripId: string): Promise<number> {
   const client = requireClient();
   const { data, error } = await client.rpc('revoke_trip_shares', { p_trip_id: tripId });
   if (error) throw new Error(`撤销分享链接：${error.message}`);
