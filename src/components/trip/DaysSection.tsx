@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { defaultActivity, defaultDay } from '../../state';
 import type { Activity, Day, Intensity, Mutate, TripState } from '../../types';
 import { confirmDialog } from '../../lib/confirm';
+import { toMapEmbedSrc } from '../../lib/mapEmbed';
 import MarkdownText from '../MarkdownText';
 
 const TIME_OPTIONS = ['清晨', '上午', '午间', '下午', '傍晚', '晚间', '全天'];
@@ -103,6 +104,7 @@ function DayCard({ d, i, total, collapsed, editUnlocked, mutate, mutateNoSave }:
   editUnlocked: boolean; mutate: Mutate; mutateNoSave: Mutate;
 }) {
   const [showMap, setShowMap] = useState(false);
+  const embedSrc = d.mapUrl ? toMapEmbedSrc(d.mapUrl) : null;
 
   const moveDay = (delta: number) => {
     const j = i + delta;
@@ -168,17 +170,23 @@ function DayCard({ d, i, total, collapsed, editUnlocked, mutate, mutateNoSave }:
               ↗ 在新标签页打开
             </a>
           </div>
-          <iframe
-            src={d.mapUrl}
-            className="w-full border-0 block"
-            style={{ height: '260px' }}
-            loading="lazy"
-            referrerPolicy="no-referrer-when-downgrade"
-            title={`${d.title} 地图`}
-            allowFullScreen
-          />
+          {embedSrc ? (
+            <iframe
+              src={embedSrc}
+              className="w-full border-0 block"
+              style={{ height: '260px' }}
+              loading="lazy"
+              referrerPolicy="no-referrer-when-downgrade"
+              title={`${d.title} 地图`}
+              allowFullScreen
+            />
+          ) : (
+            <p className="px-4 py-6 text-[13px] text-muted text-center">
+              这个链接暂时无法直接预览，点击上方「在新标签页打开」查看。
+            </p>
+          )}
           <p className="px-4 py-2 text-[11px] text-muted bg-surface-2 border-t border-dashed border-line">
-            提示：请粘贴 Google Maps 嵌入链接（地图页面 → 分享 → 嵌入地图 → 复制 src 中的 URL），普通链接无法在此预览。
+            提示：可直接填写地址或地点名称（如「东京塔」），也可粘贴 Google Maps 链接。
           </p>
         </div>
       )}
@@ -203,7 +211,7 @@ function DayCard({ d, i, total, collapsed, editUnlocked, mutate, mutateNoSave }:
               <input
                 className="inp editable flex-1 min-w-[180px]"
                 value={d.mapUrl}
-                placeholder="地图嵌入链接（Google Maps → 分享 → 嵌入地图 → 复制 src URL）"
+                placeholder="地址 / 地点名称，或粘贴 Google Maps 链接"
                 onChange={(e) => mutate((s) => { s.days[i].mapUrl = e.target.value; })}
               />
             ) : null}

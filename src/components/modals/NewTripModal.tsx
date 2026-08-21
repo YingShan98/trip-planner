@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { toast } from '../../lib/toast';
 import { blankState } from '../../state';
 import { createTrip } from '../../lib/tripApi';
+import { suggestDestinationImage } from '../../lib/destinationImage';
 import type { ImportedTripMeta, TripState } from '../../types';
 import Modal from '../Modal';
 
@@ -18,7 +19,19 @@ export default function NewTripModal({ onClose, onCreated, initialMeta, initialD
   const [end, setEnd] = useState(initialMeta?.end_date || '');
   const [slug, setSlug] = useState('');
   const [description, setDescription] = useState(initialMeta?.description || '');
+  const [coverImageUrl, setCoverImageUrl] = useState(initialMeta?.cover_image_url || '');
+  const [fetchingImage, setFetchingImage] = useState(false);
   const [busy, setBusy] = useState(false);
+
+  const fetchImage = async () => {
+    if (!destination.trim()) { toast('请先填写目的地'); return; }
+    setFetchingImage(true);
+    try {
+      const url = await suggestDestinationImage(destination.trim());
+      if (url) setCoverImageUrl(url);
+      else toast('没有找到合适的图片，可手动粘贴图片链接');
+    } finally { setFetchingImage(false); }
+  };
 
   const create = async () => {
     const cleanSlug = slug.trim().toLowerCase();
@@ -27,7 +40,7 @@ export default function NewTripModal({ onClose, onCreated, initialMeta, initialD
     try {
       const createdSlug = await createTrip({
         slug: cleanSlug, title: title.trim(), destination: destination.trim(), start_date: start || null,
-        end_date: end || null, home_currency: currency.trim() || 'MYR', description, state: initialData || blankState(),
+        end_date: end || null, home_currency: currency.trim() || 'MYR', description, cover_image_url: coverImageUrl.trim(), state: initialData || blankState(),
       });
       toast('旅行已创建');
       onClose();
@@ -48,6 +61,21 @@ export default function NewTripModal({ onClose, onCreated, initialMeta, initialD
         <div className="field"><label>开始日期</label><input className="inp" type="date" value={start} onChange={(e) => setStart(e.target.value)} /></div>
         <div className="field"><label>结束日期</label><input className="inp" type="date" value={end} onChange={(e) => setEnd(e.target.value)} /></div>
         <div className="field col-span-2"><label>Slug（网址标识，只能英文/数字/短横线）</label><input className="inp" placeholder="guangzhou-family-trip-2027" value={slug} onChange={(e) => setSlug(e.target.value)} /></div>
+        <div className="field col-span-2">
+          <label>封面图片链接（可选）</label>
+          <div className="flex gap-2">
+            <input className="inp flex-1" placeholder="https://…" value={coverImageUrl} onChange={(e) => setCoverImageUrl(e.target.value)} />
+            <button type="button" className="btn-ghost shrink-0" disabled={fetchingImage} onClick={fetchImage}>{fetchingImage ? '获取中…' : '自动获取'}</button>
+          </div>
+          {coverImageUrl && (
+            <img
+              src={coverImageUrl}
+              alt=""
+              className="mt-2 h-24 w-full object-cover rounded border border-line bg-surface-2"
+              onError={(e) => { (e.currentTarget as HTMLImageElement).style.display = 'none'; }}
+            />
+          )}
+        </div>
         <div className="field col-span-2"><label>简介</label><textarea className="inp min-h-[100px] resize-y" placeholder="旅行目标、人数、注意事项……" value={description} onChange={(e) => setDescription(e.target.value)} /></div>
       </div>
       <div className="flex justify-end mt-5 pt-4 border-t border-line"><button className="btn-primary" disabled={busy} onClick={create}>{busy ? '创建中…' : '创建旅行'}</button></div>

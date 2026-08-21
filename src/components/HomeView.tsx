@@ -25,7 +25,7 @@ export default function HomeView({
     if (!sb || !isAuthenticated) { setTrips([]); return; }
     const { data, error } = await sb
       .from('trips')
-      .select('id,slug,title,destination,start_date,end_date,home_currency,description,updated_at')
+      .select('id,slug,title,destination,start_date,end_date,home_currency,description,updated_at,cover_image_url')
       .order('updated_at', { ascending: false });
     if (error) { toast('无法读取旅行列表：' + error.message); return; }
     setTrips((data || []) as TripListRow[]);
@@ -118,8 +118,17 @@ export default function HomeView({
                 key={t.slug}
                 className="bg-surface border border-line rounded-lg overflow-hidden shadow-sm flex flex-col transition-all duration-150 hover:shadow-md hover:-translate-y-0.5"
               >
-                {/* coloured top stripe */}
-                <div className="h-1 bg-gradient-to-r from-jade to-jade-mid" />
+                {/* cover image, or coloured stripe placeholder */}
+                {t.cover_image_url ? (
+                  <img
+                    src={t.cover_image_url}
+                    alt=""
+                    className="h-32 w-full object-cover bg-surface-2"
+                    onError={(e) => { (e.currentTarget as HTMLImageElement).style.display = 'none'; }}
+                  />
+                ) : (
+                  <div className="h-1 bg-gradient-to-r from-jade to-jade-mid" />
+                )}
 
                 <div className="p-5 flex-1 flex flex-col gap-2.5">
                   <div>

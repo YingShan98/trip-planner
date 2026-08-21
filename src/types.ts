@@ -96,6 +96,7 @@ export interface ImportedTripMeta {
   start_date?: string | null;
   end_date?: string | null;
   description?: string;
+  cover_image_url?: string | null;
 }
 
 export interface TripListRow {
@@ -108,4 +109,5 @@ export interface TripListRow {
   home_currency: string;
   description: string;
   updated_at: string;
+  cover_image_url: string | null;
 }

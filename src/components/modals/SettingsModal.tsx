@@ -3,6 +3,7 @@ import { sb } from '../../lib/supabase';
 import { toast } from '../../lib/toast';
 import { confirmDialog } from '../../lib/confirm';
 import { revokeShares, setTripEditPassword, type TripMeta } from '../../lib/tripApi';
+import { suggestDestinationImage } from '../../lib/destinationImage';
 import Modal from '../Modal';
 
 export default function SettingsModal({ trip, onClose, onSaved }: {
@@ -18,19 +19,31 @@ export default function SettingsModal({ trip, onClose, onSaved }: {
   const [start, setStart] = useState(trip.start_date || '');
   const [end, setEnd] = useState(trip.end_date || '');
   const [description, setDescription] = useState(trip.description);
+  const [coverImageUrl, setCoverImageUrl] = useState(trip.cover_image_url || '');
+  const [fetchingImage, setFetchingImage] = useState(false);
   const [revoking, setRevoking] = useState(false);
   const [editPassword, setEditPassword] = useState('');
   const [savingPassword, setSavingPassword] = useState(false);
+
+  const fetchImage = async () => {
+    if (!destination.trim()) { toast('请先填写目的地'); return; }
+    setFetchingImage(true);
+    try {
+      const url = await suggestDestinationImage(destination.trim());
+      if (url) setCoverImageUrl(url);
+      else toast('没有找到合适的图片，可手动粘贴图片链接');
+    } finally { setFetchingImage(false); }
+  };
 
   const save = async () => {
     if (!sb) return;
     const { error } = await sb.from('trips').update({
       title: title.trim(), destination: destination.trim(), home_currency: currency.trim() || 'MYR',
       foreign_currency: foreignCurrency.trim(), exchange_rate: exchangeRate === '' ? null : Number(exchangeRate),
-      start_date: start || null, end_date: end || null, description,
+      start_date: start || null, end_date: end || null, description, cover_image_url: coverImageUrl.trim() || null,
     }).eq('id', trip.id);
     if (error) { toast(`保存失败：${error.message}`); return; }
-    onSaved({ title: title.trim(), destination: destination.trim(), home_currency: currency.trim() || 'MYR', foreign_currency: foreignCurrency.trim(), exchange_rate: exchangeRate === '' ? null : Number(exchangeRate), start_date: start || null, end_date: end || null, description });
+    onSaved({ title: title.trim(), destination: destination.trim(), home_currency: currency.trim() || 'MYR', foreign_currency: foreignCurrency.trim(), exchange_rate: exchangeRate === '' ? null : Number(exchangeRate), start_date: start || null, end_date: end || null, description, cover_image_url: coverImageUrl.trim() || null });
     toast('旅行设置已更新');
     onClose();
   };
@@ -65,6 +78,21 @@ export default function SettingsModal({ trip, onClose, onSaved }: {
         <div className="field"><label>结束日期</label><input className="inp" type="date" value={end} onChange={(e) => setEnd(e.target.value)} /></div>
         <div className="field"><label>外币</label><input className="inp" placeholder="例如 CNY" value={foreignCurrency} onChange={(e) => setForeignCurrency(e.target.value)} /></div>
         <div className="field"><label>汇率（1 外币 = 本地币）</label><input className="inp" type="number" value={exchangeRate} onChange={(e) => setExchangeRate(e.target.value)} /></div>
+        <div className="field col-span-2">
+          <label>封面图片链接（可选）</label>
+          <div className="flex gap-2">
+            <input className="inp flex-1" placeholder="https://…" value={coverImageUrl} onChange={(e) => setCoverImageUrl(e.target.value)} />
+            <button type="button" className="btn-ghost shrink-0" disabled={fetchingImage} onClick={fetchImage}>{fetchingImage ? '获取中…' : '自动获取'}</button>
+          </div>
+          {coverImageUrl && (
+            <img
+              src={coverImageUrl}
+              alt=""
+              className="mt-2 h-24 w-full object-cover rounded border border-line bg-surface-2"
+              onError={(e) => { (e.currentTarget as HTMLImageElement).style.display = 'none'; }}
+            />
+          )}
+        </div>
         <div className="field col-span-2"><label>简介</label><textarea className="inp min-h-[100px] resize-y" value={description} onChange={(e) => setDescription(e.target.value)} /></div>
       </div>
       <div className="flex justify-end mt-5 pt-4 border-t border-line"><button className="btn-primary" onClick={save}>保存设置</button></div>
@@ -72,7 +100,7 @@ export default function SettingsModal({ trip, onClose, onSaved }: {
         <p className="text-[12px] font-semibold text-muted mb-2">编辑密码</p>
         <p className="text-muted text-[12.5px] mb-2">为「可编辑」分享链接额外加一道密码。同行者仍无需登录，只需填写名字和这个密码。留空并保存可移除密码。</p>
         <div className="flex gap-2">
-          <input className="inp flex-1" type="password" placeholder="留空 = 不需要密码" value={editPassword} onChange={(e) => setEditPassword(e.target.value)} />
+          <input className="inp flex-1" type="password" autoComplete="off" placeholder="留空 = 不需要密码" value={editPassword} onChange={(e) => setEditPassword(e.target.value)} />
           <button className="btn-ghost shrink-0" disabled={savingPassword} onClick={handleSaveEditPassword}>{savingPassword ? '保存中…' : '更新密码'}</button>
         </div>
       </div>

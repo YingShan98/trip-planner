@@ -271,7 +271,7 @@ export default function TripView({
   const exportJSON = () => {
     if (!currentTrip || !state) return;
     downloadJSON((slug || 'trip') + '.json', {
-    meta: { title: currentTrip.title, destination: currentTrip.destination, start_date: currentTrip.start_date, end_date: currentTrip.end_date, currency: currentTrip.home_currency, description: currentTrip.description },
+    meta: { title: currentTrip.title, destination: currentTrip.destination, start_date: currentTrip.start_date, end_date: currentTrip.end_date, currency: currentTrip.home_currency, description: currentTrip.description, cover_image_url: currentTrip.cover_image_url },
       data: state,
     });
   };
@@ -300,7 +300,16 @@ export default function TripView({
 
       {/* ── Trip hero ── */}
       <header className="relative overflow-hidden bg-gradient-to-br from-jade-dark to-jade text-white content-gutter py-8">
+        {currentTrip.cover_image_url && (
+          <img
+            src={currentTrip.cover_image_url}
+            alt=""
+            className="absolute inset-0 w-full h-full object-cover opacity-40"
+            onError={(e) => { (e.currentTarget as HTMLImageElement).style.display = 'none'; }}
+          />
+        )}
         <div className="absolute inset-0 bg-[radial-gradient(circle_at_90%_10%,rgba(255,255,255,0.07)_0%,transparent_50%)]" />
+        <div className="absolute inset-0 bg-gradient-to-t from-jade-dark/70 via-transparent to-transparent" />
         <div className="relative z-10">
           <button
             className="btn mb-5 bg-white/10 border-white/22 text-white/88 text-[13px] px-3.5 py-1.5 hover:bg-white/18 hover:border-white/45 hover:text-white hover:-translate-x-0.5"
@@ -423,7 +432,7 @@ export default function TripView({
             : <p className="text-muted text-[12.5px] px-2.5">还没有安排 Day</p>}
         </aside>
         <div className="min-w-0">
-          <div id="overview" className="scroll-mt-32"><Dashboard state={state} description={currentTrip.description} total={total} done={done} /></div>
+          <div id="overview" className="scroll-mt-32"><Dashboard state={state} description={currentTrip.description} total={total} done={done} destination={currentTrip.destination} startDate={currentTrip.start_date} endDate={currentTrip.end_date} /></div>
           <div id="prepare" className="scroll-mt-32"><Checklist state={state} editUnlocked={editUnlocked} mutate={mutate} /></div>
           <div id="itinerary" className="scroll-mt-32"><DaysSection state={state} editUnlocked={editUnlocked} mutate={mutate} mutateNoSave={mutateNoSave} onCollapseAll={() => mutateNoSave((s) => { s.days.forEach((_, i) => { s.collapsed[i] = true; }); })} /></div>
           <div id="stay" className="scroll-mt-32"><HotelsSection state={state} editUnlocked={editUnlocked} mutate={mutate} /></div>

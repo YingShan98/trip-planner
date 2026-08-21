@@ -28,6 +28,7 @@ export default function GuestIdentityModal({ onClose, onContinue, initialName, r
         <input
           className="inp"
           autoFocus
+          autoComplete="off"
           maxLength={80}
           placeholder="例如：Mei 阿姨"
           value={name}
@@ -41,6 +42,7 @@ export default function GuestIdentityModal({ onClose, onContinue, initialName, r
           <input
             className="inp"
             type="password"
+            autoComplete="off"
             placeholder="向旅行拥有者获取密码"
             value={password}
             onChange={(event) => setPassword(event.target.value)}
