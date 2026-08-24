@@ -19,8 +19,9 @@ export default function AuthControl({ onUserChange }: { onUserChange?: (user: Us
   const client = sb;
   if (user && !isAnonymousUser(user)) {
     return (
-      <button className="btn-ghost" onClick={() => client.auth.signOut()} title="退出登录">
-        {user.email || '已登录'} · 退出
+      <button className="btn-ghost min-w-0 max-w-[52vw] sm:max-w-60" onClick={() => client.auth.signOut()} title={user.email || '已登录'}>
+        <span className="truncate min-w-0">{user.email || '已登录'}</span>
+        <span className="shrink-0">&nbsp;· 退出</span>
       </button>
     );
   }

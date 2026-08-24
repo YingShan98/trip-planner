@@ -24,6 +24,8 @@ create table if not exists public.trips (
   home_currency text not null default 'MYR',
   foreign_currency text not null default '',
   exchange_rate numeric,
+  checklist_categories text[] not null default '{}',
+  packing_categories text[] not null default '{}',
   visibility text not null default 'public' check (visibility in ('private', 'public', 'link')),
   cover_image_url text,
   created_at timestamptz not null default now(),
@@ -192,6 +194,16 @@ create table if not exists public.trip_notes (
   updated_at timestamptz not null default now()
 );
 
+create table if not exists public.trip_attachments (
+  id uuid primary key default gen_random_uuid(),
+  trip_id uuid not null references public.trips(id) on delete cascade,
+  label text not null default '',
+  url text not null,
+  sort_order integer not null default 0,
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now()
+);
+
 create index if not exists trip_days_trip_order_idx on public.trip_days(trip_id, day_number);
 create index if not exists activities_day_order_idx on public.activities(day_id, sort_order);
 create index if not exists checklist_trip_order_idx on public.checklist_items(trip_id, sort_order);
@@ -200,6 +212,7 @@ create index if not exists accommodations_trip_order_idx on public.accommodation
 create index if not exists transport_trip_order_idx on public.transport_options(trip_id, sort_order);
 create index if not exists budget_trip_order_idx on public.budget_items(trip_id, sort_order);
 create index if not exists notes_trip_created_idx on public.trip_notes(trip_id, created_at desc);
+create index if not exists attachments_trip_order_idx on public.trip_attachments(trip_id, sort_order);
 create index if not exists edit_events_trip_created_idx on public.trip_edit_events(trip_id, created_at desc);
 
 alter table public.profiles enable row level security;
@@ -218,6 +231,7 @@ alter table public.accommodation_links enable row level security;
 alter table public.transport_options enable row level security;
 alter table public.budget_items enable row level security;
 alter table public.trip_notes enable row level security;
+alter table public.trip_attachments enable row level security;
 
 -- Public trips are readable for the current anonymous viewer experience.
 -- Private/link-only access will be enforced by share-token RPCs in the next frontend phase.
@@ -277,6 +291,7 @@ begin
   create trigger transport_updated_at before update on public.transport_options for each row execute function public.set_updated_at();
   create trigger budget_updated_at before update on public.budget_items for each row execute function public.set_updated_at();
   create trigger notes_updated_at before update on public.trip_notes for each row execute function public.set_updated_at();
+  create trigger attachments_updated_at before update on public.trip_attachments for each row execute function public.set_updated_at();
 exception when duplicate_object then null;
 end $$;
 
@@ -285,7 +300,9 @@ alter table public.trips
   add column if not exists foreign_currency text not null default '',
   add column if not exists exchange_rate numeric,
   add column if not exists edit_password_hash text,
-  add column if not exists cover_image_url text;
+  add column if not exists cover_image_url text,
+  add column if not exists checklist_categories text[] not null default '{}',
+  add column if not exists packing_categories text[] not null default '{}';
 
 alter table public.trip_notes
   add column if not exists target_type text check (target_type in ('hotel', 'day')),
@@ -357,6 +374,11 @@ begin
   end loop;
 end $$;
 
+drop policy if exists "trip attachments read" on public.trip_attachments;
+drop policy if exists "trip attachments write" on public.trip_attachments;
+create policy "trip attachments read" on public.trip_attachments for select using (exists (select 1 from public.trips t where t.id = trip_id and public.trip_role(t.id) in ('owner', 'editor', 'viewer')));
+create policy "trip attachments write" on public.trip_attachments for all using (public.trip_role(trip_id) in ('owner', 'editor')) with check (public.trip_role(trip_id) in ('owner', 'editor'));
+
 -- Save the compatibility state in one transaction.
 drop function if exists public.save_trip_workspace(uuid, jsonb);
 drop function if exists public.save_trip_workspace(uuid, jsonb, text);
@@ -375,13 +397,20 @@ begin
   if v_role not in ('owner', 'editor') or p_state is null or jsonb_typeof(p_state) <> 'object' then return false; end if;
   v_home_currency := coalesce((select home_currency from public.trips where id = p_trip_id), 'MYR');
   v_foreign_currency := coalesce(nullif(p_state->>'foreignCurrency', ''), 'CNY');
-  update public.trips set foreign_currency = v_foreign_currency, exchange_rate = nullif(p_state->>'exchangeRate', '')::numeric, updated_at = now() where id = p_trip_id;
+  update public.trips set
+    foreign_currency = v_foreign_currency,
+    exchange_rate = nullif(p_state->>'exchangeRate', '')::numeric,
+    checklist_categories = coalesce((select array_agg(value) from jsonb_array_elements_text(coalesce(p_state->'checklistCategories','[]'::jsonb))), '{}'),
+    packing_categories = coalesce((select array_agg(value) from jsonb_array_elements_text(coalesce(p_state->'packingCategories','[]'::jsonb))), '{}'),
+    updated_at = now()
+  where id = p_trip_id;
   delete from public.checklist_items where trip_id = p_trip_id;
   delete from public.packing_items where trip_id = p_trip_id;
   delete from public.accommodations where trip_id = p_trip_id;
   delete from public.transport_options where trip_id = p_trip_id;
   delete from public.budget_items where trip_id = p_trip_id;
   delete from public.trip_notes where trip_id = p_trip_id;
+  delete from public.trip_attachments where trip_id = p_trip_id;
   delete from public.trip_days where trip_id = p_trip_id;
   insert into public.checklist_items(trip_id, category, text, is_done, sort_order) select p_trip_id, coalesce(item->>'category','其他'), coalesce(item->>'text',''), coalesce((item->>'done')::boolean, false), ordinality - 1 from jsonb_array_elements(coalesce(p_state->'checklist','[]'::jsonb)) with ordinality as rows(item, ordinality);
   insert into public.packing_items(trip_id, category, text, is_done, sort_order) select p_trip_id, coalesce(item->>'category','其他'), coalesce(item->>'text',''), coalesce((item->>'done')::boolean, false), ordinality - 1 from jsonb_array_elements(coalesce(p_state->'packing','[]'::jsonb)) with ordinality as rows(item, ordinality);
@@ -390,6 +419,10 @@ begin
   insert into public.trip_notes(trip_id, author_name, content, target_type, target_index)
   select p_trip_id, coalesce(item->>'author',''), coalesce(item->>'text',''), item->'target'->>'type', nullif(item->'target'->>'index','')::integer
   from jsonb_array_elements(coalesce(p_state->'notes','[]'::jsonb)) as rows(item);
+  insert into public.trip_attachments(trip_id, label, url, sort_order)
+  select p_trip_id, coalesce(nullif(item->>'label',''), item->>'url'), item->>'url', ordinality - 1
+  from jsonb_array_elements(coalesce(p_state->'attachments','[]'::jsonb)) with ordinality as rows(item, ordinality)
+  where nullif(trim(item->>'url'), '') is not null;
   v_index := 0;
   for v_day in select value from jsonb_array_elements(coalesce(p_state->'days','[]'::jsonb)) loop
     insert into public.trip_days(trip_id, day_number, title, intensity, walking_note, map_url, notes) values (p_trip_id, v_index + 1, coalesce(v_day->>'title','Day ' || (v_index + 1)), coalesce(v_day->>'intensity','light'), coalesce(v_day->>'steps',''), coalesce(v_day->>'mapUrl',''), coalesce(v_day->>'notes','')) returning id into v_day_id;
@@ -513,7 +546,7 @@ begin
   select trip_id into v_trip_id from public.trip_shares where token_hash = p_token_hash and revoked_at is null and (expires_at is null or expires_at > now()) limit 1;
   if v_trip_id is null then return null; end if;
   select (edit_password_hash is not null) into v_requires_password from public.trips where id = v_trip_id;
-  select jsonb_build_object('id', t.id, 'slug', t.slug, 'title', t.title, 'destination', t.destination, 'description', t.description, 'start_date', t.start_date, 'end_date', t.end_date, 'home_currency', t.home_currency, 'foreign_currency', t.foreign_currency, 'exchange_rate', t.exchange_rate, 'visibility', t.visibility, 'owner_id', t.owner_id, 'cover_image_url', t.cover_image_url, 'created_at', t.created_at, 'updated_at', t.updated_at) into v_trip from public.trips t where t.id = v_trip_id;
+  select jsonb_build_object('id', t.id, 'slug', t.slug, 'title', t.title, 'destination', t.destination, 'description', t.description, 'start_date', t.start_date, 'end_date', t.end_date, 'home_currency', t.home_currency, 'foreign_currency', t.foreign_currency, 'exchange_rate', t.exchange_rate, 'checklist_categories', to_jsonb(t.checklist_categories), 'packing_categories', to_jsonb(t.packing_categories), 'visibility', t.visibility, 'owner_id', t.owner_id, 'cover_image_url', t.cover_image_url, 'created_at', t.created_at, 'updated_at', t.updated_at) into v_trip from public.trips t where t.id = v_trip_id;
   select jsonb_build_object(
     'days', coalesce((select jsonb_agg(jsonb_build_object('n', d.day_number, 'title', d.title, 'intensity', d.intensity, 'steps', d.walking_note, 'mapUrl', d.map_url, 'notes', d.notes, 'items', coalesce((select jsonb_agg(jsonb_build_object('t', a.time_label, 'x', a.title, 'move', a.transport_note, 'fee', a.fee_note, 'link', coalesce((select jsonb_agg(jsonb_build_object('label', l.label, 'url', l.url) order by l.sort_order) from public.activity_links l where l.activity_id = a.id), '[]'::jsonb)) order by a.sort_order) from public.activities a where a.day_id = d.id), '[]'::jsonb)) order by d.day_number) from public.trip_days d where d.trip_id = v_trip_id), '[]'::jsonb),
     'checklist', coalesce((select jsonb_agg(jsonb_build_object('id', c.id, 'text', c.text, 'done', c.is_done, 'category', c.category) order by c.sort_order) from public.checklist_items c where c.trip_id = v_trip_id), '[]'::jsonb),
@@ -522,7 +555,9 @@ begin
     'transport', coalesce((select jsonb_agg(jsonb_build_object('type', x.type, 'description', x.description, 'price', x.price_label, 'amount', x.amount, 'currency', case when x.currency_code = t.home_currency then 'home' else 'foreign' end) order by x.sort_order) from public.transport_options x join public.trips t on t.id = x.trip_id where x.trip_id = v_trip_id), '[]'::jsonb),
     'budget', coalesce((select jsonb_agg(jsonb_build_object('category', b.category, 'unit', b.unit, 'quantity', b.quantity, 'unitPrice', b.unit_price, 'currency', case when b.currency_code = t.home_currency then 'home' else 'foreign' end, 'note', b.note) order by b.sort_order) from public.budget_items b join public.trips t on t.id = b.trip_id where b.trip_id = v_trip_id), '[]'::jsonb),
     'notes', coalesce((select jsonb_agg(jsonb_build_object('author', n.author_name, 'text', n.content, 'ts', n.created_at, 'target', case when n.target_type is not null then jsonb_build_object('type', n.target_type, 'index', n.target_index) else null end) order by n.created_at desc) from public.trip_notes n where n.trip_id = v_trip_id), '[]'::jsonb),
-    'collapsed', '{}'::jsonb, 'foreignCurrency', v_trip->>'foreign_currency', 'exchangeRate', v_trip->>'exchange_rate'
+    'attachments', coalesce((select jsonb_agg(jsonb_build_object('label', a.label, 'url', a.url) order by a.sort_order) from public.trip_attachments a where a.trip_id = v_trip_id), '[]'::jsonb),
+    'collapsed', '{}'::jsonb, 'foreignCurrency', v_trip->>'foreign_currency', 'exchangeRate', v_trip->>'exchange_rate',
+    'checklistCategories', coalesce(v_trip->'checklist_categories', '[]'::jsonb), 'packingCategories', coalesce(v_trip->'packing_categories', '[]'::jsonb)
   ) into v_state;
   return jsonb_build_object('trip', v_trip, 'state', v_state, 'sharePermission', (select permission from public.trip_shares where token_hash = p_token_hash and trip_id = v_trip_id and revoked_at is null and (expires_at is null or expires_at > now()) limit 1), 'requiresEditPassword', coalesce(v_requires_password, false));
 end; $$;
@@ -545,6 +580,7 @@ alter table public.accommodations replica identity full;
 alter table public.transport_options replica identity full;
 alter table public.budget_items replica identity full;
 alter table public.trip_notes replica identity full;
+alter table public.trip_attachments replica identity full;
 
 -- Add the v2 tables to Realtime. Duplicate publication entries are harmlessly ignored.
 do $$
@@ -558,5 +594,6 @@ begin
   alter publication supabase_realtime add table public.transport_options;
   alter publication supabase_realtime add table public.budget_items;
   alter publication supabase_realtime add table public.trip_notes;
+  alter publication supabase_realtime add table public.trip_attachments;
 exception when duplicate_object then null;
 end $$;

@@ -5,7 +5,7 @@ import { confirmDialog } from '../../lib/confirm';
 import type { Mutate, PackingItem, TripState } from '../../types';
 
 const CATEGORIES = ['衣物', '洗漱用品', '证件', '电子产品', '药品', '其他'] as const;
-type Category = (typeof CATEGORIES)[number];
+const FALLBACK_CATEGORY = '其他';
 
 type TemplateItem = Omit<PackingItem, 'id'>;
 
@@ -94,24 +94,29 @@ const CATEGORY_ICONS: Record<string, string> = {
 };
 
 export default function PackingModal({
-  state, editUnlocked, mutate, onClose,
+  state, editUnlocked, mutate, canCheck, onToggle, onClose,
 }: {
-  state: TripState; editUnlocked: boolean; mutate: Mutate; onClose: () => void;
+  state: TripState; editUnlocked: boolean; mutate: Mutate;
+  canCheck: boolean; onToggle: (list: 'checklist' | 'packing', id: string, done: boolean) => void;
+  onClose: () => void;
 }) {
   const [newText, setNewText] = useState('');
-  const [newCat, setNewCat] = useState<Category>('衣物');
+  const [newCat, setNewCat] = useState('衣物');
 
   const packing = state.packing;
   const packed = packing.filter((x) => x.done).length;
   const total = packing.length;
   const pct = total === 0 ? 0 : Math.round((packed / total) * 100);
 
-  const toggle = (i: number, done: boolean) => mutate((d) => { d.packing[i].done = done; });
   const remove = (i: number) => mutate((d) => { d.packing.splice(i, 1); });
   const add = () => {
     const v = newText.trim();
     if (!v) return;
-    mutate((d) => { d.packing.push({ id: uid('p'), text: v, done: false, category: newCat }); });
+    const cat = newCat.trim() || FALLBACK_CATEGORY;
+    mutate((d) => {
+      d.packing.push({ id: uid('p'), text: v, done: false, category: cat });
+      if (!(CATEGORIES as readonly string[]).includes(cat) && !d.packingCategories.includes(cat)) d.packingCategories.push(cat);
+    });
     setNewText('');
   };
 
@@ -123,6 +128,7 @@ export default function PackingModal({
   const clearDone = () => mutate((d) => { d.packing = d.packing.filter((x) => !x.done); });
 
   const presentCategories = Array.from(new Set(packing.map((x) => x.category)));
+  const knownCategories = Array.from(new Set([...CATEGORIES, ...state.packingCategories, ...presentCategories]));
   const orderedCategories = [
     ...CATEGORIES.filter((cat) => presentCategories.includes(cat)),
     ...presentCategories.filter((cat) => !(CATEGORIES as readonly string[]).includes(cat)),
@@ -194,9 +200,12 @@ export default function PackingModal({
                   >
                     <input
                       type="checkbox"
-                      className="custom-check editable"
+                      className="custom-check disabled:opacity-50 disabled:cursor-not-allowed"
                       checked={x.done}
-                      onChange={(e) => toggle(x.idx, e.target.checked)}
+                      disabled={!editUnlocked && !canCheck}
+                      onChange={(e) => editUnlocked
+                        ? mutate((d) => { d.packing[x.idx].done = e.target.checked; })
+                        : onToggle('packing', x.id, e.target.checked)}
                     />
                     <span className={`flex-1 text-[13.5px] ${x.done ? 'line-through text-muted' : ''}`}>
                       {x.text}
@@ -215,13 +224,16 @@ export default function PackingModal({
       {/* Add row */}
       {editUnlocked && (
         <div className="flex gap-2 mt-3 pt-3 border-t border-line edit-only">
-          <select
+          <input
             className="inp w-[110px] shrink-0 text-[13px]"
+            placeholder="分类…"
             value={newCat}
-            onChange={(e) => setNewCat(e.target.value as Category)}
-          >
-            {CATEGORIES.map((c) => <option key={c} value={c}>{c}</option>)}
-          </select>
+            onChange={(e) => setNewCat(e.target.value)}
+            list="packing-categories"
+          />
+          <datalist id="packing-categories">
+            {knownCategories.map((c) => <option key={c} value={c} />)}
+          </datalist>
           <input
             className="inp flex-1"
             placeholder="添加物品…"

@@ -17,9 +17,10 @@ const CATEGORY_ICONS: Record<string, string> = {
 };
 
 export default function Checklist({
-  state, editUnlocked, mutate,
+  state, editUnlocked, mutate, canCheck, onToggle,
 }: {
   state: TripState; editUnlocked: boolean; mutate: Mutate;
+  canCheck: boolean; onToggle: (list: 'checklist' | 'packing', id: string, done: boolean) => void;
 }) {
   const [newText, setNewText] = useState('');
   const [newCat, setNewCat] = useState(DEFAULT_CATEGORIES[0]);
@@ -30,7 +31,7 @@ export default function Checklist({
   const total = checklist.length;
 
   const presentCategories = Array.from(new Set(checklist.map((x) => x.category || FALLBACK_CATEGORY)));
-  const knownCategories = Array.from(new Set([...DEFAULT_CATEGORIES, ...presentCategories]));
+  const knownCategories = Array.from(new Set([...DEFAULT_CATEGORIES, ...state.checklistCategories, ...presentCategories]));
   const orderedCategories = [
     ...DEFAULT_CATEGORIES.filter((cat) => presentCategories.includes(cat)),
     ...presentCategories.filter((cat) => !DEFAULT_CATEGORIES.includes(cat)),
@@ -44,7 +45,10 @@ export default function Checklist({
     const v = newText.trim();
     if (!v) return;
     const cat = newCat.trim() || FALLBACK_CATEGORY;
-    mutate((d) => { d.checklist.push({ id: uid('c'), text: v, done: false, category: cat }); });
+    mutate((d) => {
+      d.checklist.push({ id: uid('c'), text: v, done: false, category: cat });
+      if (!DEFAULT_CATEGORIES.includes(cat) && !d.checklistCategories.includes(cat)) d.checklistCategories.push(cat);
+    });
     setNewText('');
   };
 
@@ -95,9 +99,12 @@ export default function Checklist({
                   >
                     <input
                       type="checkbox"
-                      className="custom-check editable"
+                      className="custom-check disabled:opacity-50 disabled:cursor-not-allowed"
                       checked={x.done}
-                      onChange={(e) => mutate((d) => { d.checklist[x.idx].done = e.target.checked; })}
+                      disabled={!editUnlocked && !canCheck}
+                      onChange={(e) => editUnlocked
+                        ? mutate((d) => { d.checklist[x.idx].done = e.target.checked; })
+                        : onToggle('checklist', x.id, e.target.checked)}
                     />
                     <span className={`flex-1 text-[14px] ${x.done ? 'line-through text-muted' : ''}`}>{x.text}</span>
                     <button
@@ -143,6 +150,8 @@ export default function Checklist({
           state={state}
           editUnlocked={editUnlocked}
           mutate={mutate}
+          canCheck={canCheck}
+          onToggle={onToggle}
           onClose={() => setShowPacking(false)}
         />
       )}

@@ -18,6 +18,7 @@ import CurrencySection from './CurrencySection';
 import TransportSection from './TransportSection';
 import BudgetSection from './BudgetSection';
 import NotesSection from './NotesSection';
+import AttachmentsSection from './AttachmentsSection';
 import SettingsModal from '../modals/SettingsModal';
 import Modal from '../Modal';
 import GuestIdentityModal from '../modals/GuestIdentityModal';
@@ -33,7 +34,7 @@ function buildShareLink(token: string): string {
 
 const SECTIONS = [
   ['overview', '概览'], ['prepare', '准备'], ['itinerary', '行程'],
-  ['stay', '住宿'], ['currency', '汇率'], ['transport', '交通'], ['budget', '预算'], ['notes', '讨论'],
+  ['stay', '住宿'], ['currency', '汇率'], ['transport', '交通'], ['budget', '预算'], ['notes', '讨论'], ['attachments', '附件'],
 ] as const;
 
 export default function TripView({
@@ -71,6 +72,8 @@ export default function TripView({
   const stateRef         = useRef<TripState | null>(null);
   const saveInFlightRef  = useRef(false);
   const savePendingRef   = useRef(false);
+  const quickSaveInFlightRef = useRef(false);
+  const quickSavePendingRef  = useRef(false);
 
   useEffect(() => { stateRef.current = state; }, [state]);
   useEffect(() => { hasUnsavedChangesRef.current = hasUnsavedChanges; }, [hasUnsavedChanges]);
@@ -191,6 +194,39 @@ export default function TripView({
   const mutateNoSave = useCallback((fn: (draft: TripState) => void) => {
     setState((prev) => { if (!prev) return prev; const next = structuredClone(prev); fn(next); return next; });
   }, []);
+
+  /* ── Quick-check save: lets checklist/packing checkboxes persist without unlocking full edit
+     mode. Independent of the edit-mode batch save above so it never interferes with hasUnsavedChanges/
+     the FAB, but reuses the same in-flight/pending-retry shape to avoid racing concurrent toggles. ── */
+  const canCheck = !readOnly && (shareToken
+    ? sharePermission === 'edit' && Boolean(guestName) && (!requiresEditPassword || Boolean(editPassword))
+    : role === 'owner' || role === 'editor');
+
+  const quickSave = useCallback(async (payload: TripState) => {
+    if (!sb) return;
+    if (quickSaveInFlightRef.current) { quickSavePendingRef.current = true; return; }
+    quickSaveInFlightRef.current = true;
+    try {
+      if (shareToken) await saveSharedTrip(shareToken, payload, editPassword || undefined);
+      else await saveTrip(slug, payload);
+    } catch (e) {
+      toast('保存失败：' + (e as Error).message);
+    } finally {
+      quickSaveInFlightRef.current = false;
+      if (quickSavePendingRef.current) { quickSavePendingRef.current = false; if (stateRef.current) quickSave(stateRef.current); }
+    }
+  }, [shareToken, slug, editPassword]);
+
+  const toggleCheck = useCallback((list: 'checklist' | 'packing', id: string, done: boolean) => {
+    setState((prev) => {
+      if (!prev) return prev;
+      const next = structuredClone(prev);
+      const item = (list === 'checklist' ? next.checklist : next.packing).find((x) => x.id === id);
+      if (item) item.done = done;
+      quickSave(next);
+      return next;
+    });
+  }, [quickSave]);
 
   const toggleEdit = async () => {
     if (editUnlocked) {
@@ -502,13 +538,14 @@ export default function TripView({
         </aside>
         <div className="min-w-0">
           <div id="overview" className="scroll-mt-32"><Dashboard state={state} description={currentTrip.description} total={total} done={done} startDate={currentTrip.start_date} endDate={currentTrip.end_date} weather={weather} /></div>
-          <div id="prepare" className="scroll-mt-32"><Checklist state={state} editUnlocked={editUnlocked} mutate={mutate} /></div>
+          <div id="prepare" className="scroll-mt-32"><Checklist state={state} editUnlocked={editUnlocked} mutate={mutate} canCheck={canCheck} onToggle={toggleCheck} /></div>
           <div id="itinerary" className="scroll-mt-32"><DaysSection state={state} editUnlocked={editUnlocked} mutate={mutate} mutateNoSave={mutateNoSave} startDate={currentTrip.start_date} weather={weather} authorName={myPresenceName} onCollapseAll={() => mutateNoSave((s) => { s.days.forEach((_, i) => { s.collapsed[i] = true; }); })} /></div>
           <div id="stay" className="scroll-mt-32"><HotelsSection state={state} editUnlocked={editUnlocked} mutate={mutate} authorName={myPresenceName} /></div>
           <div id="currency" className="scroll-mt-32"><CurrencySection state={state} homeCurrency={currentTrip.home_currency} mutate={mutate} /></div>
           <div id="transport" className="scroll-mt-32"><TransportSection state={state} editUnlocked={editUnlocked} mutate={mutate} homeCurrency={currentTrip.home_currency} /></div>
           <div id="budget" className="scroll-mt-32"><BudgetSection state={state} editUnlocked={editUnlocked} mutate={mutate} currency={currentTrip.home_currency} /></div>
           <div id="notes" className="scroll-mt-32"><NotesSection state={state} editUnlocked={editUnlocked} mutate={mutate} authorName={myPresenceName} /></div>
+          <div id="attachments" className="scroll-mt-32"><AttachmentsSection state={state} editUnlocked={editUnlocked} mutate={mutate} /></div>
         </div>
       </div>
 

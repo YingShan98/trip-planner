@@ -94,7 +94,7 @@ export default function HomeView({
     <main className="max-w-[1200px] mx-auto">
 
       {/* ── Hero ── */}
-      <section className="relative overflow-hidden bg-gradient-to-br from-jade-dark via-jade to-jade-mid text-white content-gutter py-14 flex justify-between items-end gap-8">
+      <section className="relative overflow-hidden bg-gradient-to-br from-jade-dark via-jade to-jade-mid text-white content-gutter py-14 flex flex-wrap justify-between items-end gap-8">
         <div className="relative z-10">
           <div className="text-[11px] font-bold tracking-[0.14em] text-white/60 uppercase mb-3">
             YOUR SHARED TRAVEL DESK

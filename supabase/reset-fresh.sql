@@ -28,6 +28,7 @@ drop table if exists public.accommodations cascade;
 drop table if exists public.transport_options cascade;
 drop table if exists public.budget_items cascade;
 drop table if exists public.trip_notes cascade;
+drop table if exists public.trip_attachments cascade;
 drop table if exists public.trip_shares cascade;
 drop table if exists public.trip_edit_events cascade;
 drop table if exists public.trip_guest_identities cascade;

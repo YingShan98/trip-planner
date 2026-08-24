@@ -75,10 +75,11 @@
    ═══════════════════════════════════════════════════════════ */
 @layer base {
   *, *::before, *::after { box-sizing: border-box; }
-  html { scroll-behavior: smooth; -webkit-text-size-adjust: 100%; }
+  html { scroll-behavior: smooth; -webkit-text-size-adjust: 100%; overflow-x: hidden; }
 
   body {
     margin: 0;
+    overflow-x: hidden;
     background-color: var(--color-bg);
     color: var(--color-ink);
     font-family: var(--font-sans);

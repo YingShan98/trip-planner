@@ -13,6 +13,8 @@ export interface TripMeta {
   home_currency: string;
   foreign_currency: string;
   exchange_rate: number | string | null;
+  checklist_categories: string[] | null;
+  packing_categories: string[] | null;
   visibility: 'private' | 'public' | 'link';
   owner_id: string | null;
   cover_image_url: string | null;
@@ -37,7 +39,7 @@ function result<T>(label: string, response: { data: T | null; error: { message: 
   return response.data as T;
 }
 
-const TRIP_META_COLUMNS = 'id,slug,title,destination,description,start_date,end_date,home_currency,foreign_currency,exchange_rate,visibility,owner_id,cover_image_url,created_at,updated_at';
+const TRIP_META_COLUMNS = 'id,slug,title,destination,description,start_date,end_date,home_currency,foreign_currency,exchange_rate,checklist_categories,packing_categories,visibility,owner_id,cover_image_url,created_at,updated_at';
 
 export async function loadTrip(slug: string): Promise<TripWorkspace> {
   const client = requireClient();
@@ -51,13 +53,14 @@ export async function loadTrip(slug: string): Promise<TripWorkspace> {
   const activityLinks = activityIds.length
     ? result('读取活动链接', await client.from('activity_links').select('*').in('activity_id', activityIds).order('sort_order')) as Array<Record<string, unknown>>
     : [];
-  const [checklist, packing, accommodations, transport, budget, notes] = await Promise.all([
+  const [checklist, packing, accommodations, transport, budget, notes, attachments] = await Promise.all([
     client.from('checklist_items').select('*').eq('trip_id', trip.id).order('sort_order'),
     client.from('packing_items').select('*').eq('trip_id', trip.id).order('sort_order'),
     client.from('accommodations').select('*').eq('trip_id', trip.id).order('sort_order'),
     client.from('transport_options').select('*').eq('trip_id', trip.id).order('sort_order'),
     client.from('budget_items').select('*').eq('trip_id', trip.id).order('sort_order'),
     client.from('trip_notes').select('*').eq('trip_id', trip.id).order('created_at', { ascending: false }),
+    client.from('trip_attachments').select('*').eq('trip_id', trip.id).order('sort_order'),
   ]);
   const accommodationsRows = result('读取住宿', accommodations) as Array<Record<string, unknown>>;
   const accommodationIds = accommodationsRows.map((item) => item.id as string);
@@ -102,8 +105,11 @@ export async function loadTrip(slug: string): Promise<TripWorkspace> {
       ? { type: item.target_type, index: Number(item.target_index) }
       : undefined,
   } as NoteItem));
+  state.attachments = (result('读取附件', attachments) as Array<Record<string, unknown>>).map((item) => ({ label: String(item.label || ''), url: String(item.url || '') } as LinkItem));
   state.foreignCurrency = trip.foreign_currency || '';
   state.exchangeRate = trip.exchange_rate ?? '';
+  state.checklistCategories = Array.isArray(trip.checklist_categories) ? trip.checklist_categories : [];
+  state.packingCategories = Array.isArray(trip.packing_categories) ? trip.packing_categories : [];
   return { trip, state };
 }
 

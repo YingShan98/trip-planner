@@ -11,9 +11,12 @@ export function blankState(): TripState {
     transport: [],
     budget: [],
     notes: [],
+    attachments: [],
     collapsed: {},
     foreignCurrency: '',
     exchangeRate: '',
+    checklistCategories: [],
+    packingCategories: [],
   };
 }
 
@@ -82,9 +85,12 @@ export function templateState(): TripState {
     ],
     budget: [{ category: '示例：住宿', unit: '晚', quantity: 3, unitPrice: 300, currency: 'home', note: '示例备注' }],
     notes: [{ author: '示例：小明', text: '示例留言内容', ts: '2027-01-01 12:00:00' }],
+    attachments: [{ label: '示例：详细行程文档', url: 'https://example.com' }],
     collapsed: {},
     foreignCurrency: 'CNY',
     exchangeRate: 0.62,
+    checklistCategories: [],
+    packingCategories: [],
   };
 }
 
@@ -114,6 +120,11 @@ export function normalize(s: unknown): TripState {
   x.transport = Array.isArray(src.transport) ? src.transport.map((t) => ({ ...defaultTransport(), ...t })) : [];
   x.budget = Array.isArray(src.budget) ? src.budget.map((b) => ({ ...defaultBudget(), ...b })) : [];
   x.notes = Array.isArray(src.notes) ? src.notes : [];
+  x.attachments = Array.isArray(src.attachments)
+    ? src.attachments.filter((a) => a && typeof a.url === 'string' && a.url.trim()).map((a) => ({ label: a.label || '', url: a.url }))
+    : [];
+  x.checklistCategories = Array.isArray(src.checklistCategories) ? src.checklistCategories.filter((c) => typeof c === 'string' && c.trim()) : [];
+  x.packingCategories = Array.isArray(src.packingCategories) ? src.packingCategories.filter((c) => typeof c === 'string' && c.trim()) : [];
   x.collapsed = src.collapsed || {};
   x.foreignCurrency = typeof src.foreignCurrency === 'string' ? src.foreignCurrency : '';
   x.exchangeRate =

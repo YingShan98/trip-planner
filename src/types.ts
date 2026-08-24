@@ -88,11 +88,15 @@ export interface TripState {
   transport: TransportItem[];
   budget: BudgetItem[];
   notes: NoteItem[];
+  attachments: LinkItem[];
   collapsed: Record<number, boolean>;
   /** destination/foreign currency code, e.g. 'CNY'. Home currency lives on the trip row. */
   foreignCurrency: string;
   /** 1 unit of foreignCurrency = exchangeRate units of home currency, e.g. 1 CNY = 0.62 MYR */
   exchangeRate: number | string;
+  /** Custom categories the user has typed for checklist/packing items, remembered even once unused. */
+  checklistCategories: string[];
+  packingCategories: string[];
 }
 
 export type Mutate = (fn: (draft: TripState) => void) => void;
