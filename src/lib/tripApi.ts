@@ -18,6 +18,8 @@ export interface TripMeta {
   visibility: 'private' | 'public' | 'link';
   owner_id: string | null;
   cover_image_url: string | null;
+  /** Incremented by save_trip_workspace on every content save; used as an optimistic-concurrency token. */
+  content_version: number;
   created_at: string;
   updated_at: string;
 }
@@ -39,7 +41,7 @@ function result<T>(label: string, response: { data: T | null; error: { message: 
   return response.data as T;
 }
 
-const TRIP_META_COLUMNS = 'id,slug,title,destination,description,start_date,end_date,home_currency,foreign_currency,exchange_rate,checklist_categories,packing_categories,visibility,owner_id,cover_image_url,created_at,updated_at';
+const TRIP_META_COLUMNS = 'id,slug,title,destination,description,start_date,end_date,home_currency,foreign_currency,exchange_rate,checklist_categories,packing_categories,visibility,owner_id,cover_image_url,content_version,created_at,updated_at';
 
 export async function loadTrip(slug: string): Promise<TripWorkspace> {
   const client = requireClient();
@@ -113,26 +115,45 @@ export async function loadTrip(slug: string): Promise<TripWorkspace> {
   return { trip, state };
 }
 
-async function saveTripByRpc(tripId: string, state: TripState, tokenHash?: string, password?: string): Promise<void> {
-  const client = requireClient();
-  const response = await client.rpc('save_trip_workspace', { p_trip_id: tripId, p_state: state, p_token_hash: tokenHash || null, p_password: password || null });
-  if (response.error || response.data !== true) throw new Error(response.error?.message || '保存失败');
+/** Thrown by saveTrip/saveSharedTrip when someone else saved this trip after we last loaded it. */
+export class SaveConflictError extends Error {
+  version: number;
+  constructor(version: number) {
+    super('保存冲突：有其他人已保存了更新的内容');
+    this.name = 'SaveConflictError';
+    this.version = version;
+  }
 }
 
-export async function saveTrip(slug: string, state: TripState): Promise<void> {
+async function saveTripByRpc(tripId: string, state: TripState, expectedVersion: number, force: boolean, tokenHash?: string, password?: string): Promise<number> {
+  const client = requireClient();
+  const response = await client.rpc('save_trip_workspace', {
+    p_trip_id: tripId, p_state: state, p_token_hash: tokenHash || null, p_password: password || null,
+    p_expected_version: expectedVersion, p_force: force,
+  });
+  if (response.error) throw new Error(response.error.message || '保存失败');
+  const data = response.data as { ok: boolean; conflict: boolean; version: number | null } | null;
+  if (!data?.ok || data.version === null) {
+    if (data?.conflict && data.version !== null) throw new SaveConflictError(data.version);
+    throw new Error('保存失败');
+  }
+  return data.version;
+}
+
+export async function saveTrip(slug: string, state: TripState, expectedVersion: number, force = false): Promise<number> {
   const client = requireClient();
   const trip = result('读取旅行', await client.from('trips').select('id').eq('slug', slug).single()) as { id: string };
-  await saveTripByRpc(trip.id, state);
+  return saveTripByRpc(trip.id, state, expectedVersion, force);
 }
 
-export async function saveSharedTrip(token: string, state: TripState, password?: string): Promise<void> {
+export async function saveSharedTrip(token: string, state: TripState, expectedVersion: number, force = false, password?: string): Promise<number> {
   const client = requireClient();
   const tokenHash = await sha256Hex(token);
   const workspace = await client.rpc('get_shared_trip_workspace', { p_token_hash: tokenHash });
   if (workspace.error || !workspace.data) throw new Error(workspace.error?.message || '分享链接无效、已撤销或已过期');
   const trip = workspace.data as TripWorkspace;
   if (trip.sharePermission !== 'edit') throw new Error('此分享链接没有编辑权限');
-  await saveTripByRpc(trip.trip.id, state, tokenHash, password);
+  return saveTripByRpc(trip.trip.id, state, expectedVersion, force, tokenHash, password);
 }
 
 export async function verifyEditPassword(token: string, password: string): Promise<boolean> {
@@ -155,7 +176,7 @@ export async function createTrip(input: { slug: string; title: string; destinati
   if (userError) throw new Error(`读取登录用户：${userError.message}`);
   if (!userData.user) throw new Error('请先登录');
   const trip = result('创建旅行', await client.from('trips').insert({ owner_id: userData.user.id, slug: input.slug, title: input.title, destination: input.destination, start_date: input.start_date, end_date: input.end_date, home_currency: input.home_currency, description: input.description, visibility: 'public', foreign_currency: input.state.foreignCurrency || '', exchange_rate: input.state.exchangeRate === '' ? null : Number(input.state.exchangeRate), cover_image_url: input.cover_image_url?.trim() || null }).select('slug').single()) as { slug: string };
-  await saveTrip(trip.slug, input.state);
+  await saveTrip(trip.slug, input.state, 0);
   return trip.slug as string;
 }
 

@@ -31,7 +31,7 @@ Row-level metadata (title, destination, dates, `home_currency`) lives on `TripMe
 
 `TripView` owns the single `state: TripState` and passes two callbacks down to every section component:
 
-- `mutate(fn)` — clones state via `structuredClone`, applies `fn`, sets state, then schedules a debounced (650 ms) save via `tripApi.ts:saveTrip()`/`saveSharedTrip()`.
+- `mutate(fn)` — clones state via `structuredClone`, applies `fn`, sets state, and marks `hasUnsavedChanges`. The actual save is manual: the edit-mode FAB calls `saveRemote()`, which sends the trip's `content_version` to `tripApi.ts:saveTrip()`/`saveSharedTrip()` as an optimistic-concurrency token and prompts to overwrite-or-cancel if `save_trip_workspace` reports a conflict (someone else saved first).
 - `mutateNoSave(fn)` — same clone-and-set but no save (used for UI-only state like collapsed sections).
 
 Section components receive `{ state, editUnlocked, mutate, mutateNoSave? }` and never hold their own copies of trip data.
@@ -40,7 +40,7 @@ Section components receive `{ state, editUnlocked, mutate, mutateNoSave? }` and 
 
 All writes go through `src/lib/tripApi.ts`, which wraps Postgres RPCs (never direct `UPDATE` for trip content):
 - `createTrip()` — inserts the `trips` row, requires an authenticated owner
-- `saveTrip()` / `saveSharedTrip()` — call the `save_trip_workspace` RPC (the latter passes a share-token hash instead of relying on auth)
+- `saveTrip()` / `saveSharedTrip()` — call the `save_trip_workspace` RPC (the latter passes a share-token hash instead of relying on auth), passing `content_version` for optimistic-concurrency conflict detection; throw `SaveConflictError` when the RPC reports a conflict
 - `getTripRole()` — calls the `trip_role` RPC, returns `'owner' | 'editor' | 'viewer' | null`
 - `createShare()` / `createViewShare()` / `loadSharedTrip()` / `revokeShares()` — the token-hashed share-link flow, backed by `create_trip_share`, `get_shared_trip_workspace`, `revoke_trip_shares`
 - `deleteTrip()` — deletes the `trips` row (cascades to child tables)

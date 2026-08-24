@@ -302,7 +302,8 @@ alter table public.trips
   add column if not exists edit_password_hash text,
   add column if not exists cover_image_url text,
   add column if not exists checklist_categories text[] not null default '{}',
-  add column if not exists packing_categories text[] not null default '{}';
+  add column if not exists packing_categories text[] not null default '{}',
+  add column if not exists content_version bigint not null default 0;
 
 alter table public.trip_notes
   add column if not exists target_type text check (target_type in ('hotel', 'day')),
@@ -352,8 +353,13 @@ create policy "activities write" on public.activities for all using (exists (sel
 
 drop policy if exists "public activity links are readable" on public.activity_links;
 drop policy if exists "owners manage activity links" on public.activity_links;
-create policy "activity links read" on public.activity_links for select using (exists (select 1 from public.activities a join public.trip_days d on d.id = a.day_id join public.trips t on t.id = d.trip_id where a.id = activity_id and (t.visibility = 'public' or public.trip_role(t.id) in ('owner', 'editor', 'viewer'))));
+create policy "activity links read" on public.activity_links for select using (exists (select 1 from public.activities a join public.trip_days d on d.id = a.day_id join public.trips t on t.id = d.trip_id where a.id = activity_id and public.trip_role(t.id) in ('owner', 'editor', 'viewer')));
 create policy "activity links write" on public.activity_links for all using (exists (select 1 from public.activities a join public.trip_days d on d.id = a.day_id where a.id = activity_id and public.trip_role(d.trip_id) in ('owner', 'editor'))) with check (exists (select 1 from public.activities a join public.trip_days d on d.id = a.day_id where a.id = activity_id and public.trip_role(d.trip_id) in ('owner', 'editor')));
+
+drop policy if exists "public accommodation links are readable" on public.accommodation_links;
+drop policy if exists "owners manage accommodation links" on public.accommodation_links;
+create policy "accommodation links read" on public.accommodation_links for select using (exists (select 1 from public.accommodations a join public.trips t on t.id = a.trip_id where a.id = accommodation_id and public.trip_role(t.id) in ('owner', 'editor', 'viewer')));
+create policy "accommodation links write" on public.accommodation_links for all using (exists (select 1 from public.accommodations a where a.id = accommodation_id and public.trip_role(a.trip_id) in ('owner', 'editor'))) with check (exists (select 1 from public.accommodations a where a.id = accommodation_id and public.trip_role(a.trip_id) in ('owner', 'editor')));
 
 do $$
 declare table_name text; label text; readable_policy text;
@@ -383,18 +389,26 @@ create policy "trip attachments write" on public.trip_attachments for all using 
 drop function if exists public.save_trip_workspace(uuid, jsonb);
 drop function if exists public.save_trip_workspace(uuid, jsonb, text);
 drop function if exists public.save_trip_workspace(uuid, jsonb, text, text);
-create or replace function public.save_trip_workspace(p_trip_id uuid, p_state jsonb, p_token_hash text default null, p_password text default null)
-returns boolean language plpgsql security definer set search_path = public, extensions
+create or replace function public.save_trip_workspace(p_trip_id uuid, p_state jsonb, p_token_hash text default null, p_password text default null, p_expected_version bigint default null, p_force boolean default false)
+returns jsonb language plpgsql security definer set search_path = public, extensions
 as $$
-declare v_role text; v_day jsonb; v_activity jsonb; v_link jsonb; v_hotel jsonb; v_index integer; v_day_id uuid; v_activity_id uuid; v_hotel_id uuid; v_home_currency text; v_foreign_currency text; v_edit_password_hash text;
+declare v_role text; v_day jsonb; v_activity jsonb; v_link jsonb; v_hotel jsonb; v_index integer; v_day_id uuid; v_activity_id uuid; v_hotel_id uuid; v_home_currency text; v_foreign_currency text; v_edit_password_hash text; v_current_version bigint; v_new_version bigint;
 begin
+  -- Locks the row for the rest of this call, so two concurrent saves on the
+  -- same trip serialize instead of racing on the version check below.
+  select content_version into v_current_version from public.trips where id = p_trip_id for update;
+  if v_current_version is null then return jsonb_build_object('ok', false, 'conflict', false, 'version', null); end if;
   v_role := public.trip_role(p_trip_id);
   if v_role not in ('owner', 'editor') and exists (select 1 from public.trip_shares where trip_id = p_trip_id and token_hash = p_token_hash and permission = 'edit' and revoked_at is null and (expires_at is null or expires_at > now())) then
     select edit_password_hash into v_edit_password_hash from public.trips where id = p_trip_id;
-    if v_edit_password_hash is not null and (p_password is null or crypt(p_password, v_edit_password_hash) <> v_edit_password_hash) then return false; end if;
+    if v_edit_password_hash is not null and (p_password is null or crypt(p_password, v_edit_password_hash) <> v_edit_password_hash) then return jsonb_build_object('ok', false, 'conflict', false, 'version', v_current_version); end if;
     v_role := 'editor';
   end if;
-  if v_role not in ('owner', 'editor') or p_state is null or jsonb_typeof(p_state) <> 'object' then return false; end if;
+  if v_role not in ('owner', 'editor') or p_state is null or jsonb_typeof(p_state) <> 'object' then return jsonb_build_object('ok', false, 'conflict', false, 'version', v_current_version); end if;
+  if not p_force and p_expected_version is not null and v_current_version <> p_expected_version then
+    return jsonb_build_object('ok', false, 'conflict', true, 'version', v_current_version);
+  end if;
+  v_new_version := v_current_version + 1;
   v_home_currency := coalesce((select home_currency from public.trips where id = p_trip_id), 'MYR');
   v_foreign_currency := coalesce(nullif(p_state->>'foreignCurrency', ''), 'CNY');
   update public.trips set
@@ -402,6 +416,7 @@ begin
     exchange_rate = nullif(p_state->>'exchangeRate', '')::numeric,
     checklist_categories = coalesce((select array_agg(value) from jsonb_array_elements_text(coalesce(p_state->'checklistCategories','[]'::jsonb))), '{}'),
     packing_categories = coalesce((select array_agg(value) from jsonb_array_elements_text(coalesce(p_state->'packingCategories','[]'::jsonb))), '{}'),
+    content_version = v_new_version,
     updated_at = now()
   where id = p_trip_id;
   delete from public.checklist_items where trip_id = p_trip_id;
@@ -452,11 +467,11 @@ begin
     (select s.id from public.trip_shares s where s.trip_id = p_trip_id and s.token_hash = p_token_hash and s.revoked_at is null limit 1),
     '更新了旅行计划'
   );
-  return true;
+  return jsonb_build_object('ok', true, 'conflict', false, 'version', v_new_version);
 end;
 $$;
-revoke all on function public.save_trip_workspace(uuid, jsonb, text, text) from public;
-grant execute on function public.save_trip_workspace(uuid, jsonb, text, text) to anon, authenticated;
+revoke all on function public.save_trip_workspace(uuid, jsonb, text, text, bigint, boolean) from public;
+grant execute on function public.save_trip_workspace(uuid, jsonb, text, text, bigint, boolean) to anon, authenticated;
 
 create or replace function public.set_trip_guest_name(p_trip_id uuid, p_token_hash text, p_display_name text)
 returns boolean language plpgsql security definer set search_path = public, extensions
@@ -546,7 +561,7 @@ begin
   select trip_id into v_trip_id from public.trip_shares where token_hash = p_token_hash and revoked_at is null and (expires_at is null or expires_at > now()) limit 1;
   if v_trip_id is null then return null; end if;
   select (edit_password_hash is not null) into v_requires_password from public.trips where id = v_trip_id;
-  select jsonb_build_object('id', t.id, 'slug', t.slug, 'title', t.title, 'destination', t.destination, 'description', t.description, 'start_date', t.start_date, 'end_date', t.end_date, 'home_currency', t.home_currency, 'foreign_currency', t.foreign_currency, 'exchange_rate', t.exchange_rate, 'checklist_categories', to_jsonb(t.checklist_categories), 'packing_categories', to_jsonb(t.packing_categories), 'visibility', t.visibility, 'owner_id', t.owner_id, 'cover_image_url', t.cover_image_url, 'created_at', t.created_at, 'updated_at', t.updated_at) into v_trip from public.trips t where t.id = v_trip_id;
+  select jsonb_build_object('id', t.id, 'slug', t.slug, 'title', t.title, 'destination', t.destination, 'description', t.description, 'start_date', t.start_date, 'end_date', t.end_date, 'home_currency', t.home_currency, 'foreign_currency', t.foreign_currency, 'exchange_rate', t.exchange_rate, 'checklist_categories', to_jsonb(t.checklist_categories), 'packing_categories', to_jsonb(t.packing_categories), 'visibility', t.visibility, 'owner_id', t.owner_id, 'cover_image_url', t.cover_image_url, 'content_version', t.content_version, 'created_at', t.created_at, 'updated_at', t.updated_at) into v_trip from public.trips t where t.id = v_trip_id;
   select jsonb_build_object(
     'days', coalesce((select jsonb_agg(jsonb_build_object('n', d.day_number, 'title', d.title, 'intensity', d.intensity, 'steps', d.walking_note, 'mapUrl', d.map_url, 'notes', d.notes, 'items', coalesce((select jsonb_agg(jsonb_build_object('t', a.time_label, 'x', a.title, 'move', a.transport_note, 'fee', a.fee_note, 'link', coalesce((select jsonb_agg(jsonb_build_object('label', l.label, 'url', l.url) order by l.sort_order) from public.activity_links l where l.activity_id = a.id), '[]'::jsonb)) order by a.sort_order) from public.activities a where a.day_id = d.id), '[]'::jsonb)) order by d.day_number) from public.trip_days d where d.trip_id = v_trip_id), '[]'::jsonb),
     'checklist', coalesce((select jsonb_agg(jsonb_build_object('id', c.id, 'text', c.text, 'done', c.is_done, 'category', c.category) order by c.sort_order) from public.checklist_items c where c.trip_id = v_trip_id), '[]'::jsonb),

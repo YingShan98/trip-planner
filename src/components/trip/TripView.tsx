@@ -6,7 +6,7 @@ import { confirmDialog } from '../../lib/confirm';
 import { dateRange, dayDate, formatDateWithWeekday, tripCountdownLabel } from '../../lib/format';
 import { fetchWeather, type WeatherResult } from '../../lib/weather';
 import { downloadJSON } from '../../lib/download';
-import { createShare, deleteTrip, getTripRole, loadSharedTrip, loadTrip, saveSharedTrip, saveTrip, verifyEditPassword, type TripMeta } from '../../lib/tripApi';
+import { createShare, deleteTrip, getTripRole, loadSharedTrip, loadTrip, saveSharedTrip, saveTrip, SaveConflictError, verifyEditPassword, type TripMeta } from '../../lib/tripApi';
 import { ensureGuestSession, getExistingGuestUser, getTripEditEvents, isAnonymousUser, setGuestName, type TripEditEvent } from '../../lib/guestAuth';
 import type { TripState } from '../../types';
 import { parseRate } from '../../lib/currency';
@@ -70,12 +70,14 @@ export default function TripView({
   const editUnlockedRef  = useRef(false);
   const hasUnsavedChangesRef = useRef(false);
   const stateRef         = useRef<TripState | null>(null);
+  const currentTripRef   = useRef<TripMeta | null>(null);
   const saveInFlightRef  = useRef(false);
   const savePendingRef   = useRef(false);
   const quickSaveInFlightRef = useRef(false);
   const quickSavePendingRef  = useRef(false);
 
   useEffect(() => { stateRef.current = state; }, [state]);
+  useEffect(() => { currentTripRef.current = currentTrip; }, [currentTrip]);
   useEffect(() => { hasUnsavedChangesRef.current = hasUnsavedChanges; }, [hasUnsavedChanges]);
 
   const setEditUnlocked = (v: boolean) => { editUnlockedRef.current = v; setEditUnlockedState(v); };
@@ -104,7 +106,6 @@ export default function TripView({
       setSyncStatus('在线同步中');
     })();
     return () => { cancelled = true; };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [slug, shareToken]);
 
   /* ── Realtime ──
@@ -161,7 +162,10 @@ export default function TripView({
     if (presenceSubscribedRef.current) presenceChannelRef.current?.track({ name: myPresenceName, editing: editUnlocked });
   }, [myPresenceName, editUnlocked]);
 
-  /* ── Save ── */
+  /* ── Save ──
+     content_version is an optimistic-concurrency token (see save_trip_workspace):
+     each save must state the version it was loaded from, and the RPC rejects the
+     save instead of silently overwriting if someone else saved in between. */
   const saveRemote = useCallback(async () => {
     if (!editUnlockedRef.current || !hasUnsavedChanges || !sb || isSaving) return;
     if (saveInFlightRef.current) { savePendingRef.current = true; return; }
@@ -169,12 +173,32 @@ export default function TripView({
     setIsSaving(true);
     setSyncStatus('保存中…');
     try {
-      if (!stateRef.current) throw new Error('没有可保存的行程');
-      if (shareToken) await saveSharedTrip(shareToken, stateRef.current, editPassword || undefined);
-      else await saveTrip(slug, stateRef.current);
-      setHasUnsavedChanges(false);
-      setSyncStatus('已同步');
-      toast('已同步');
+      let force = false;
+      for (;;) {
+        if (!stateRef.current || !currentTripRef.current) throw new Error('没有可保存的行程');
+        try {
+          const version = shareToken
+            ? await saveSharedTrip(shareToken, stateRef.current, currentTripRef.current.content_version, force, editPassword || undefined)
+            : await saveTrip(slug, stateRef.current, currentTripRef.current.content_version, force);
+          setCurrentTrip((prev) => (prev ? { ...prev, content_version: version } : prev));
+          setHasUnsavedChanges(false);
+          setSyncStatus('已同步');
+          toast('已同步');
+          break;
+        } catch (e) {
+          if (!(e instanceof SaveConflictError)) throw e;
+          setSyncStatus('保存冲突');
+          // Cancel (including Escape/backdrop, which ConfirmDialog also resolves false) must stay
+          // inert: it's the keyboard default, so it can never be the branch that discards local edits.
+          const overwrite = await confirmDialog(
+            '有其他人已经保存了这趟旅行的更新内容，你的修改还没有保存。是否用你的修改覆盖对方的内容？',
+            { title: '保存冲突', confirmLabel: '用我的修改覆盖', cancelLabel: '取消，先不保存' },
+          );
+          if (overwrite) { force = true; continue; }
+          toast('已取消保存，你的修改还留在本地，可以稍后重试');
+          break;
+        }
+      }
     } catch (e) {
       setSyncStatus('保存失败');
       toast('保存失败：' + (e as Error).message);
@@ -203,14 +227,25 @@ export default function TripView({
     : role === 'owner' || role === 'editor');
 
   const quickSave = useCallback(async (payload: TripState) => {
-    if (!sb) return;
+    if (!sb || !currentTripRef.current) return;
     if (quickSaveInFlightRef.current) { quickSavePendingRef.current = true; return; }
     quickSaveInFlightRef.current = true;
     try {
-      if (shareToken) await saveSharedTrip(shareToken, payload, editPassword || undefined);
-      else await saveTrip(slug, payload);
+      const version = shareToken
+        ? await saveSharedTrip(shareToken, payload, currentTripRef.current.content_version, false, editPassword || undefined)
+        : await saveTrip(slug, payload, currentTripRef.current.content_version);
+      setCurrentTrip((prev) => (prev ? { ...prev, content_version: version } : prev));
     } catch (e) {
-      toast('保存失败：' + (e as Error).message);
+      if (e instanceof SaveConflictError) {
+        toast('有其他人更新了这趟旅行，正在重新加载最新内容…');
+        try {
+          const workspace = shareToken ? await loadSharedTrip(shareToken) : await loadTrip(slug);
+          setCurrentTrip(workspace.trip);
+          setState(workspace.state);
+        } catch (reloadError) { toast('重新加载失败：' + (reloadError as Error).message); }
+      } else {
+        toast('保存失败：' + (e as Error).message);
+      }
     } finally {
       quickSaveInFlightRef.current = false;
       if (quickSavePendingRef.current) { quickSavePendingRef.current = false; if (stateRef.current) quickSave(stateRef.current); }
