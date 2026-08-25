@@ -181,7 +181,15 @@ export async function createTrip(input: { slug: string; title: string; destinati
   if (userError) throw new Error(`读取登录用户：${userError.message}`);
   if (!userData.user) throw new Error('请先登录');
   const trip = result('创建旅行', await client.from('trips').insert({ owner_id: userData.user.id, slug: input.slug, title: input.title, destination: input.destination, start_date: input.start_date, end_date: input.end_date, home_currency: input.home_currency, description: input.description, visibility: 'public', foreign_currency: input.state.foreignCurrency || '', exchange_rate: input.state.exchangeRate === '' ? null : Number(input.state.exchangeRate), cover_image_url: input.cover_image_url?.trim() || null }).select('slug').single()) as { slug: string };
-  await saveTrip(trip.slug, input.state, 0);
+  try {
+    await saveTrip(trip.slug, input.state, 0);
+  } catch (error) {
+    // The trip row above already committed even though the content save below failed (it's a
+    // separate RPC transaction) — without this cleanup, a failed import leaves an empty orphan
+    // trip behind that then blocks retrying with the same slug via a duplicate-key error.
+    await client.from('trips').delete().eq('slug', trip.slug);
+    throw error;
+  }
   return trip.slug as string;
 }
 
