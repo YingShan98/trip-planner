@@ -14,6 +14,12 @@ export interface Activity {
   move: string;
   fee: string;
   link: LinkItem[];
+  /** Opening hours, e.g. "09:00–17:30". */
+  visitHours: string;
+  /** Closed days, e.g. "每周二". */
+  closedDays: string;
+  /** Best weekdays to go, e.g. "周一至周四优先". */
+  recommendedWeekdays: string;
 }
 
 export interface Day {
@@ -48,6 +54,8 @@ export interface Hotel {
   pointsText: string;
   link: LinkItem[];
   notes: string;
+  /** Marks this as the final booked choice among the candidates. At most one hotel should have this set. */
+  chosen: boolean;
 }
 
 export interface TransportItem {
@@ -56,6 +64,8 @@ export interface TransportItem {
   price: string;
   amount: number | string;
   currency: CurrencyKey;
+  /** Marks this as the final decided option among the candidates. At most one transport item should have this set. */
+  chosen: boolean;
 }
 
 export interface BudgetItem {

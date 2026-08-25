@@ -312,6 +312,17 @@ alter table public.trip_notes
 alter table public.checklist_items
   add column if not exists category text not null default '其他';
 
+alter table public.accommodations
+  add column if not exists is_chosen boolean not null default false;
+
+alter table public.transport_options
+  add column if not exists is_chosen boolean not null default false;
+
+alter table public.activities
+  add column if not exists visit_hours text not null default '',
+  add column if not exists closed_days text not null default '',
+  add column if not exists recommended_weekdays text not null default '';
+
 -- Role helper used by RLS and transactional RPCs.
 create or replace function public.trip_role(p_trip_id uuid)
 returns text language sql stable security definer set search_path = public
@@ -429,7 +440,7 @@ begin
   delete from public.trip_days where trip_id = p_trip_id;
   insert into public.checklist_items(trip_id, category, text, is_done, sort_order) select p_trip_id, coalesce(item->>'category','其他'), coalesce(item->>'text',''), coalesce((item->>'done')::boolean, false), ordinality - 1 from jsonb_array_elements(coalesce(p_state->'checklist','[]'::jsonb)) with ordinality as rows(item, ordinality);
   insert into public.packing_items(trip_id, category, text, is_done, sort_order) select p_trip_id, coalesce(item->>'category','其他'), coalesce(item->>'text',''), coalesce((item->>'done')::boolean, false), ordinality - 1 from jsonb_array_elements(coalesce(p_state->'packing','[]'::jsonb)) with ordinality as rows(item, ordinality);
-  insert into public.transport_options(trip_id, sort_order, type, description, price_label, amount, currency_code) select p_trip_id, ordinality - 1, coalesce(item->>'type',''), coalesce(item->>'description',''), coalesce(item->>'price',''), nullif(item->>'amount','')::numeric, case when item->>'currency' = 'foreign' then v_foreign_currency else v_home_currency end from jsonb_array_elements(coalesce(p_state->'transport','[]'::jsonb)) with ordinality as rows(item, ordinality);
+  insert into public.transport_options(trip_id, sort_order, type, description, price_label, amount, currency_code, is_chosen) select p_trip_id, ordinality - 1, coalesce(item->>'type',''), coalesce(item->>'description',''), coalesce(item->>'price',''), nullif(item->>'amount','')::numeric, case when item->>'currency' = 'foreign' then v_foreign_currency else v_home_currency end, coalesce((item->>'chosen')::boolean, false) from jsonb_array_elements(coalesce(p_state->'transport','[]'::jsonb)) with ordinality as rows(item, ordinality);
   insert into public.budget_items(trip_id, sort_order, category, unit, quantity, unit_price, currency_code, note) select p_trip_id, ordinality - 1, coalesce(item->>'category',''), coalesce(item->>'unit',''), coalesce(nullif(item->>'quantity','')::numeric, 0), coalesce(nullif(item->>'unitPrice','')::numeric, 0), case when item->>'currency' = 'foreign' then v_foreign_currency else v_home_currency end, coalesce(item->>'note','') from jsonb_array_elements(coalesce(p_state->'budget','[]'::jsonb)) with ordinality as rows(item, ordinality);
   insert into public.trip_notes(trip_id, author_name, content, target_type, target_index)
   select p_trip_id, coalesce(item->>'author',''), coalesce(item->>'text',''), item->'target'->>'type', nullif(item->'target'->>'index','')::integer
@@ -442,7 +453,7 @@ begin
   for v_day in select value from jsonb_array_elements(coalesce(p_state->'days','[]'::jsonb)) loop
     insert into public.trip_days(trip_id, day_number, title, intensity, walking_note, map_url, notes) values (p_trip_id, v_index + 1, coalesce(v_day->>'title','Day ' || (v_index + 1)), coalesce(v_day->>'intensity','light'), coalesce(v_day->>'steps',''), coalesce(v_day->>'mapUrl',''), coalesce(v_day->>'notes','')) returning id into v_day_id;
     for v_activity in select value from jsonb_array_elements(coalesce(v_day->'items','[]'::jsonb)) loop
-      insert into public.activities(day_id, sort_order, time_label, title, transport_note, fee_note) values (v_day_id, v_index, coalesce(v_activity->>'t',''), coalesce(v_activity->>'x',''), coalesce(v_activity->>'move',''), coalesce(v_activity->>'fee','')) returning id into v_activity_id;
+      insert into public.activities(day_id, sort_order, time_label, title, transport_note, fee_note, visit_hours, closed_days, recommended_weekdays) values (v_day_id, v_index, coalesce(v_activity->>'t',''), coalesce(v_activity->>'x',''), coalesce(v_activity->>'move',''), coalesce(v_activity->>'fee',''), coalesce(v_activity->>'visitHours',''), coalesce(v_activity->>'closedDays',''), coalesce(v_activity->>'recommendedWeekdays','')) returning id into v_activity_id;
       v_index := v_index + 1;
       for v_link in select value from jsonb_array_elements(coalesce(v_activity->'link','[]'::jsonb)) loop
         if nullif(trim(v_link->>'url'), '') is not null then insert into public.activity_links(activity_id, label, url, sort_order) values (v_activity_id, coalesce(nullif(v_link->>'label',''), v_link->>'url'), v_link->>'url', 0); end if;
@@ -452,7 +463,7 @@ begin
   end loop;
   v_index := 0;
   for v_hotel in select value from jsonb_array_elements(coalesce(p_state->'hotels','[]'::jsonb)) loop
-    insert into public.accommodations(trip_id, sort_order, rank_label, name, address, warning, pros_cons, notes) values (p_trip_id, v_index, coalesce(v_hotel->>'rank',''), coalesce(v_hotel->>'name',''), coalesce(v_hotel->>'addr',''), coalesce(v_hotel->>'warn',''), coalesce(v_hotel->>'pointsText',''), coalesce(v_hotel->>'notes','')) returning id into v_hotel_id;
+    insert into public.accommodations(trip_id, sort_order, rank_label, name, address, warning, pros_cons, notes, is_chosen) values (p_trip_id, v_index, coalesce(v_hotel->>'rank',''), coalesce(v_hotel->>'name',''), coalesce(v_hotel->>'addr',''), coalesce(v_hotel->>'warn',''), coalesce(v_hotel->>'pointsText',''), coalesce(v_hotel->>'notes',''), coalesce((v_hotel->>'chosen')::boolean, false)) returning id into v_hotel_id;
     for v_link in select value from jsonb_array_elements(coalesce(v_hotel->'link','[]'::jsonb)) loop
       if nullif(trim(v_link->>'url'), '') is not null then insert into public.accommodation_links(accommodation_id, label, url, sort_order) values (v_hotel_id, coalesce(nullif(v_link->>'label',''), v_link->>'url'), v_link->>'url', 0); end if;
     end loop;
@@ -563,11 +574,11 @@ begin
   select (edit_password_hash is not null) into v_requires_password from public.trips where id = v_trip_id;
   select jsonb_build_object('id', t.id, 'slug', t.slug, 'title', t.title, 'destination', t.destination, 'description', t.description, 'start_date', t.start_date, 'end_date', t.end_date, 'home_currency', t.home_currency, 'foreign_currency', t.foreign_currency, 'exchange_rate', t.exchange_rate, 'checklist_categories', to_jsonb(t.checklist_categories), 'packing_categories', to_jsonb(t.packing_categories), 'visibility', t.visibility, 'owner_id', t.owner_id, 'cover_image_url', t.cover_image_url, 'content_version', t.content_version, 'created_at', t.created_at, 'updated_at', t.updated_at) into v_trip from public.trips t where t.id = v_trip_id;
   select jsonb_build_object(
-    'days', coalesce((select jsonb_agg(jsonb_build_object('n', d.day_number, 'title', d.title, 'intensity', d.intensity, 'steps', d.walking_note, 'mapUrl', d.map_url, 'notes', d.notes, 'items', coalesce((select jsonb_agg(jsonb_build_object('t', a.time_label, 'x', a.title, 'move', a.transport_note, 'fee', a.fee_note, 'link', coalesce((select jsonb_agg(jsonb_build_object('label', l.label, 'url', l.url) order by l.sort_order) from public.activity_links l where l.activity_id = a.id), '[]'::jsonb)) order by a.sort_order) from public.activities a where a.day_id = d.id), '[]'::jsonb)) order by d.day_number) from public.trip_days d where d.trip_id = v_trip_id), '[]'::jsonb),
+    'days', coalesce((select jsonb_agg(jsonb_build_object('n', d.day_number, 'title', d.title, 'intensity', d.intensity, 'steps', d.walking_note, 'mapUrl', d.map_url, 'notes', d.notes, 'items', coalesce((select jsonb_agg(jsonb_build_object('t', a.time_label, 'x', a.title, 'move', a.transport_note, 'fee', a.fee_note, 'visitHours', a.visit_hours, 'closedDays', a.closed_days, 'recommendedWeekdays', a.recommended_weekdays, 'link', coalesce((select jsonb_agg(jsonb_build_object('label', l.label, 'url', l.url) order by l.sort_order) from public.activity_links l where l.activity_id = a.id), '[]'::jsonb)) order by a.sort_order) from public.activities a where a.day_id = d.id), '[]'::jsonb)) order by d.day_number) from public.trip_days d where d.trip_id = v_trip_id), '[]'::jsonb),
     'checklist', coalesce((select jsonb_agg(jsonb_build_object('id', c.id, 'text', c.text, 'done', c.is_done, 'category', c.category) order by c.sort_order) from public.checklist_items c where c.trip_id = v_trip_id), '[]'::jsonb),
     'packing', coalesce((select jsonb_agg(jsonb_build_object('id', p.id, 'text', p.text, 'done', p.is_done, 'category', p.category) order by p.sort_order) from public.packing_items p where p.trip_id = v_trip_id), '[]'::jsonb),
-    'hotels', coalesce((select jsonb_agg(jsonb_build_object('rank', h.rank_label, 'name', h.name, 'addr', h.address, 'warn', h.warning, 'pointsText', h.pros_cons, 'notes', h.notes, 'link', coalesce((select jsonb_agg(jsonb_build_object('label', l.label, 'url', l.url) order by l.sort_order) from public.accommodation_links l where l.accommodation_id = h.id), '[]'::jsonb)) order by h.sort_order) from public.accommodations h where h.trip_id = v_trip_id), '[]'::jsonb),
-    'transport', coalesce((select jsonb_agg(jsonb_build_object('type', x.type, 'description', x.description, 'price', x.price_label, 'amount', x.amount, 'currency', case when x.currency_code = t.home_currency then 'home' else 'foreign' end) order by x.sort_order) from public.transport_options x join public.trips t on t.id = x.trip_id where x.trip_id = v_trip_id), '[]'::jsonb),
+    'hotels', coalesce((select jsonb_agg(jsonb_build_object('rank', h.rank_label, 'name', h.name, 'addr', h.address, 'warn', h.warning, 'pointsText', h.pros_cons, 'notes', h.notes, 'chosen', h.is_chosen, 'link', coalesce((select jsonb_agg(jsonb_build_object('label', l.label, 'url', l.url) order by l.sort_order) from public.accommodation_links l where l.accommodation_id = h.id), '[]'::jsonb)) order by h.sort_order) from public.accommodations h where h.trip_id = v_trip_id), '[]'::jsonb),
+    'transport', coalesce((select jsonb_agg(jsonb_build_object('type', x.type, 'description', x.description, 'price', x.price_label, 'amount', x.amount, 'currency', case when x.currency_code = t.home_currency then 'home' else 'foreign' end, 'chosen', x.is_chosen) order by x.sort_order) from public.transport_options x join public.trips t on t.id = x.trip_id where x.trip_id = v_trip_id), '[]'::jsonb),
     'budget', coalesce((select jsonb_agg(jsonb_build_object('category', b.category, 'unit', b.unit, 'quantity', b.quantity, 'unitPrice', b.unit_price, 'currency', case when b.currency_code = t.home_currency then 'home' else 'foreign' end, 'note', b.note) order by b.sort_order) from public.budget_items b join public.trips t on t.id = b.trip_id where b.trip_id = v_trip_id), '[]'::jsonb),
     'notes', coalesce((select jsonb_agg(jsonb_build_object('author', n.author_name, 'text', n.content, 'ts', n.created_at, 'target', case when n.target_type is not null then jsonb_build_object('type', n.target_type, 'index', n.target_index) else null end) order by n.created_at desc) from public.trip_notes n where n.trip_id = v_trip_id), '[]'::jsonb),
     'attachments', coalesce((select jsonb_agg(jsonb_build_object('label', a.label, 'url', a.url) order by a.sort_order) from public.trip_attachments a where a.trip_id = v_trip_id), '[]'::jsonb),

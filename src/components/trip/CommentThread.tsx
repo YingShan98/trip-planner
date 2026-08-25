@@ -4,10 +4,10 @@ import MarkdownText from '../MarkdownText';
 
 /** A small discussion thread attached to one hotel/day card. Shares TripState.notes with the general notes wall. */
 export default function CommentThread({
-  state, editUnlocked, mutate, targetType, targetIndex, authorName,
+  state, editUnlocked, mutate, targetType, targetIndex, authorName, printVisible = true,
 }: {
   state: TripState; editUnlocked: boolean; mutate: Mutate;
-  targetType: 'hotel' | 'day'; targetIndex: number; authorName: string;
+  targetType: 'hotel' | 'day'; targetIndex: number; authorName: string; printVisible?: boolean;
 }) {
   const [text, setText] = useState('');
 
@@ -29,7 +29,7 @@ export default function CommentThread({
   if (thread.length === 0 && !editUnlocked) return null;
 
   return (
-    <div className="mt-2.5 pt-2.5 border-t border-dashed border-line">
+    <div className={`mt-2.5 pt-2.5 border-t border-dashed border-line${printVisible ? '' : ' print-hide'}`}>
       <p className="text-[11px] font-semibold text-muted uppercase tracking-[0.06em] mb-1.5">
         💬 讨论{thread.length > 0 ? ` (${thread.length})` : ''}
       </p>

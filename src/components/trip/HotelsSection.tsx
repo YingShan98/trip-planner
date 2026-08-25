@@ -4,9 +4,10 @@ import MarkdownText from '../MarkdownText';
 import CommentThread from './CommentThread';
 
 export default function HotelsSection({
-  state, editUnlocked, mutate, authorName,
+  state, editUnlocked, mutate, authorName, printOnlyIndex = null, showDiscussionInPrint = true,
 }: {
   state: TripState; editUnlocked: boolean; mutate: Mutate; authorName: string;
+  printOnlyIndex?: number | null; showDiscussionInPrint?: boolean;
 }) {
   return (
     <section className="py-7 border-b border-line">
@@ -20,27 +21,45 @@ export default function HotelsSection({
       ) : (
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3.5">
           {state.hotels.map((h, i) => (
-            <article id={`hotel-${i}`} key={i} className="bg-surface border border-line rounded-lg p-4 shadow-xs flex flex-col gap-2.5 scroll-mt-32">
+            <article
+              id={`hotel-${i}`}
+              key={i}
+              className={`bg-surface border border-line rounded-lg p-4 shadow-xs flex flex-col gap-2.5 scroll-mt-32 print-keep${printOnlyIndex != null && printOnlyIndex !== i ? ' print-hide' : ''}`}
+            >
 
-              {/* Row 1: rank badge + delete */}
-              <div className="flex items-center justify-between gap-2">
-                {editUnlocked ? <input
-                    className="inp editable w-[90px] text-[12px] shrink-0"
-                    value={h.rank}
-                    placeholder="排名 / 状态"
-                    onChange={(e) => mutate((d) => { d.hotels[i].rank = e.target.value; })}
-                  /> : <span className="pill">{h.rank || '未排名'}</span>}
-                <button
-                  aria-label={`删除酒店「${h.name || i + 1}」`}
-                  className="btn-mini edit-only shrink-0"
-                  onClick={() => mutate((d) => {
-                    d.hotels.splice(i, 1);
-                    d.notes = d.notes.filter((n) => !(n.target?.type === 'hotel' && n.target.index === i));
-                    d.notes.forEach((n) => { if (n.target?.type === 'hotel' && n.target.index > i) n.target.index -= 1; });
-                  })}
-                >
-                  ×
-                </button>
+              {/* Row 1: rank badge + final-choice toggle + delete */}
+              <div className="flex items-center justify-between gap-2 flex-wrap">
+                <div className="flex items-center gap-2 flex-wrap">
+                  {editUnlocked ? <input
+                      className="inp editable w-[90px] text-[12px] shrink-0"
+                      value={h.rank}
+                      placeholder="排名 / 状态"
+                      onChange={(e) => mutate((d) => { d.hotels[i].rank = e.target.value; })}
+                    /> : <span className="pill">{h.rank || '未排名'}</span>}
+                  {h.chosen && <span className="pill bg-jade-dark !text-white border-jade-dark">✓ 最终选择</span>}
+                </div>
+                <div className="flex items-center gap-1.5 shrink-0">
+                  {editUnlocked && (
+                    <button
+                      aria-label={h.chosen ? '取消设为最终选择' : `将「${h.name || i + 1}」设为最终选择`}
+                      className={`btn-mini edit-only ${h.chosen ? 'bg-jade-dark !text-white border-jade-dark' : ''}`}
+                      onClick={() => mutate((d) => { d.hotels.forEach((hh, hi) => { hh.chosen = hi === i ? !hh.chosen : false; }); })}
+                    >
+                      {h.chosen ? '★ 已选定' : '☆ 定为最终选择'}
+                    </button>
+                  )}
+                  <button
+                    aria-label={`删除酒店「${h.name || i + 1}」`}
+                    className="btn-mini edit-only"
+                    onClick={() => mutate((d) => {
+                      d.hotels.splice(i, 1);
+                      d.notes = d.notes.filter((n) => !(n.target?.type === 'hotel' && n.target.index === i));
+                      d.notes.forEach((n) => { if (n.target?.type === 'hotel' && n.target.index > i) n.target.index -= 1; });
+                    })}
+                  >
+                    ×
+                  </button>
+                </div>
               </div>
 
               {/* Row 2: hotel name — full width, prominent */}
@@ -117,7 +136,7 @@ export default function HotelsSection({
                 )}
               </div>
 
-              <CommentThread state={state} editUnlocked={editUnlocked} mutate={mutate} targetType="hotel" targetIndex={i} authorName={authorName} />
+              <CommentThread state={state} editUnlocked={editUnlocked} mutate={mutate} targetType="hotel" targetIndex={i} authorName={authorName} printVisible={showDiscussionInPrint} />
             </article>
           ))}
         </div>

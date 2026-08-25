@@ -61,7 +61,7 @@ function ActivityRow({ a, di, ai, total, editUnlocked, mutate }: {
   };
 
   return (
-    <div className="bg-surface-2 border border-line rounded p-3 mb-2.5 transition-all duration-150 hover:border-line-strong hover:shadow-xs">
+    <div className="bg-surface-2 border border-line rounded p-3 mb-2.5 transition-all duration-150 hover:border-line-strong hover:shadow-xs print-keep">
       <div className="grid grid-cols-1 sm:grid-cols-[100px_1fr_auto] gap-2 items-center mb-2">
         {editUnlocked ? (
           <select className="inp editable sm:w-auto"
@@ -97,16 +97,38 @@ function ActivityRow({ a, di, ai, total, editUnlocked, mutate }: {
           <div className="rich-field"><span className="rich-label">费用</span><MarkdownText text={a.fee} /></div>
         ) : null}
       </div>
+      {(editUnlocked || a.visitHours || a.closedDays || a.recommendedWeekdays) && (
+        <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 mt-2.5 pt-2.5 border-t border-dashed border-line">
+          {editUnlocked ? (
+            <input className="inp editable text-[12.5px]" value={a.visitHours} placeholder="开放时间，如 09:00–17:30"
+              onChange={(e) => mutate((d) => { d.days[di].items[ai].visitHours = e.target.value; })} />
+          ) : a.visitHours ? (
+            <div className="rich-field"><span className="rich-label">开放时间</span><MarkdownText text={a.visitHours} /></div>
+          ) : null}
+          {editUnlocked ? (
+            <input className="inp editable text-[12.5px]" value={a.closedDays} placeholder="闭馆日，如每周二"
+              onChange={(e) => mutate((d) => { d.days[di].items[ai].closedDays = e.target.value; })} />
+          ) : a.closedDays ? (
+            <div className="rich-field"><span className="rich-label">闭馆日</span><MarkdownText text={a.closedDays} /></div>
+          ) : null}
+          {editUnlocked ? (
+            <input className="inp editable text-[12.5px]" value={a.recommendedWeekdays} placeholder="建议星期，如周一至周四优先"
+              onChange={(e) => mutate((d) => { d.days[di].items[ai].recommendedWeekdays = e.target.value; })} />
+          ) : a.recommendedWeekdays ? (
+            <div className="rich-field"><span className="rich-label">建议星期</span><MarkdownText text={a.recommendedWeekdays} /></div>
+          ) : null}
+        </div>
+      )}
       <LinkRows di={di} ai={ai} links={a.link} editUnlocked={editUnlocked} mutate={mutate} />
     </div>
   );
 }
 
-function DayCard({ d, i, total, collapsed, editUnlocked, mutate, mutateNoSave, date, dayWeather, state, authorName }: {
+function DayCard({ d, i, total, collapsed, editUnlocked, mutate, mutateNoSave, date, dayWeather, state, authorName, showDiscussionInPrint }: {
   d: Day; i: number; total: number; collapsed: boolean;
   editUnlocked: boolean; mutate: Mutate; mutateNoSave: Mutate;
   date: string | null; dayWeather?: { tMax: number; tMin: number; precipProb: number; code: number };
-  state: TripState; authorName: string;
+  state: TripState; authorName: string; showDiscussionInPrint: boolean;
 }) {
   const [showMap, setShowMap] = useState(false);
   const embedSrc = d.mapUrl ? toMapEmbedSrc(d.mapUrl) : null;
@@ -127,7 +149,7 @@ function DayCard({ d, i, total, collapsed, editUnlocked, mutate, mutateNoSave, d
   return (
     <article id={`day-${i + 1}`} className="bg-surface border border-line rounded-lg overflow-hidden mb-3.5 shadow-xs transition-shadow duration-150 hover:shadow-sm scroll-mt-32">
       {/* Day header */}
-      <div className="flex items-center gap-2.5 px-4 py-3 bg-surface-3 border-b border-line flex-wrap">
+      <div className="flex items-center gap-2.5 px-4 py-3 bg-surface-3 border-b border-line flex-wrap print-head">
         <span className="bg-jade-dark text-white rounded-[5px] px-2.5 py-1 font-bold text-[11.5px] tracking-[0.06em] shrink-0">
           D{i + 1}
         </span>
@@ -263,7 +285,7 @@ function DayCard({ d, i, total, collapsed, editUnlocked, mutate, mutateNoSave, d
             <div className="rich-field mt-2"><span className="rich-label">当天备注</span><MarkdownText text={d.notes} /></div>
           ) : null}
 
-          <CommentThread state={state} editUnlocked={editUnlocked} mutate={mutate} targetType="day" targetIndex={i} authorName={authorName} />
+          <CommentThread state={state} editUnlocked={editUnlocked} mutate={mutate} targetType="day" targetIndex={i} authorName={authorName} printVisible={showDiscussionInPrint} />
         </div>
       )}
     </article>
@@ -271,10 +293,11 @@ function DayCard({ d, i, total, collapsed, editUnlocked, mutate, mutateNoSave, d
 }
 
 export default function DaysSection({
-  state, editUnlocked, mutate, mutateNoSave, startDate, weather, authorName, onCollapseAll,
+  state, editUnlocked, mutate, mutateNoSave, startDate, weather, authorName, onCollapseAll, showDiscussionInPrint = true,
 }: {
   state: TripState; editUnlocked: boolean; mutate: Mutate; mutateNoSave: Mutate;
   startDate: string | null; weather: WeatherResult | 'loading' | null; authorName: string; onCollapseAll: () => void;
+  showDiscussionInPrint?: boolean;
 }) {
   const weatherByDate = weather && weather !== 'loading' && weather.status === 'ok'
     ? new Map(weather.days.map((w) => [w.date, w]))
@@ -295,7 +318,7 @@ export default function DaysSection({
             collapsed={Boolean(state.collapsed[i])}
             editUnlocked={editUnlocked} mutate={mutate} mutateNoSave={mutateNoSave}
             date={date} dayWeather={date ? weatherByDate?.get(date) : undefined}
-            state={state} authorName={authorName}
+            state={state} authorName={authorName} showDiscussionInPrint={showDiscussionInPrint}
           />
         );
       })}

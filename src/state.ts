@@ -25,15 +25,15 @@ export function defaultDay(n: number): Day {
 }
 
 export function defaultActivity(): Activity {
-  return { t: '上午', x: '', move: '', fee: '', link: [] };
+  return { t: '上午', x: '', move: '', fee: '', link: [], visitHours: '', closedDays: '', recommendedWeekdays: '' };
 }
 
 export function defaultHotel(): Hotel {
-  return { rank: '候选', name: '', addr: '', warn: '', pointsText: '', link: [], notes: '' };
+  return { rank: '候选', name: '', addr: '', warn: '', pointsText: '', link: [], notes: '', chosen: false };
 }
 
 export function defaultTransport(): TransportItem {
-  return { type: '', description: '', price: '', amount: '', currency: 'home' };
+  return { type: '', description: '', price: '', amount: '', currency: 'home', chosen: false };
 }
 
 export function defaultBudget(): BudgetItem {
@@ -56,6 +56,9 @@ export function templateState(): TripState {
             move: '示例：地铁 3 号线',
             fee: '示例：RM 50/人',
             link: [{ label: '官网', url: 'https://example.com' }],
+            visitHours: '示例：09:30–22:30',
+            closedDays: '示例：全年开放',
+            recommendedWeekdays: '示例：周一至周四优先，避开周末',
           },
         ],
         notes: '示例：老人可在附近咖啡厅休息',
@@ -72,6 +75,7 @@ export function templateState(): TripState {
         pointsText: '优点：地理位置好\n缺点：价格较高',
         link: [{ label: '预订链接', url: 'https://example.com' }],
         notes: '示例讨论备注',
+        chosen: true,
       },
     ],
     transport: [
@@ -81,6 +85,7 @@ export function templateState(): TripState {
         price: '示例：每天',
         amount: 600,
         currency: 'foreign',
+        chosen: true,
       },
     ],
     budget: [{ category: '示例：住宿', unit: '晚', quantity: 3, unitPrice: 300, currency: 'home', note: '示例备注' }],

@@ -23,6 +23,7 @@ import SettingsModal from '../modals/SettingsModal';
 import Modal from '../Modal';
 import GuestIdentityModal from '../modals/GuestIdentityModal';
 import EditHistoryModal from '../modals/EditHistoryModal';
+import PrintModal, { defaultPrintSections, type PrintSections } from '../modals/PrintModal';
 
 function buildShareLink(token: string): string {
   const u = new URL(location.href);
@@ -61,6 +62,11 @@ export default function TripView({
   const [hasUnsavedChanges, setHasUnsavedChanges] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
   const [activeSection, setActiveSection] = useState<string>(SECTIONS[0][0]);
+  const [showPrintModal, setShowPrintModal] = useState(false);
+  const [printSections, setPrintSections] = useState<PrintSections>(defaultPrintSections);
+  const [printHotelFilter, setPrintHotelFilter] = useState<number | 'all'>('all');
+  const [printTransportFilter, setPrintTransportFilter] = useState<number | 'all'>('all');
+  const [printRequestedAt, setPrintRequestedAt] = useState(0);
   const [weather, setWeather] = useState<WeatherResult | 'loading' | null>(null);
   const [myEmail, setMyEmail] = useState<string | null>(null);
   const [viewers, setViewers] = useState<{ name: string; editing: boolean }[]>([]);
@@ -385,12 +391,35 @@ export default function TripView({
     return () => { cancelled = true; };
   }, [currentTrip?.destination, currentTrip?.start_date, currentTrip?.end_date]);
 
-  /* Days collapsed on-screen aren't rendered at all, so printing right after a collapse would
-     silently omit their content — expand everything first and let the browser paint before printing. */
-  const handlePrint = () => {
-    mutateNoSave((s) => { s.days.forEach((_, i) => { s.collapsed[i] = false; }); });
-    setTimeout(() => window.print(), 50);
+  /* Opens the print-options modal, pre-selecting each section's persisted "final choice" hotel/
+     transport (if one has been marked) as the default print filter. */
+  const openPrintModal = () => {
+    if (!state) return;
+    const chosenHotelIdx = state.hotels.findIndex((h) => h.chosen);
+    const chosenTransportIdx = state.transport.findIndex((t) => t.chosen);
+    setPrintHotelFilter(chosenHotelIdx >= 0 ? chosenHotelIdx : 'all');
+    setPrintTransportFilter(chosenTransportIdx >= 0 ? chosenTransportIdx : 'all');
+    setShowPrintModal(true);
   };
+
+  /* Days collapsed on-screen aren't rendered at all, so printing right after a collapse would
+     silently omit their content — expand everything first, then wait for the browser to actually
+     paint the section/hotel/transport filters (already applied via React state at this point)
+     before printing, rather than guessing with a fixed timeout. */
+  const confirmPrint = () => {
+    mutateNoSave((s) => { s.days.forEach((_, i) => { s.collapsed[i] = false; }); });
+    setShowPrintModal(false);
+    setPrintRequestedAt(Date.now());
+  };
+
+  useEffect(() => {
+    if (!printRequestedAt) return;
+    let raf2 = 0;
+    const raf1 = requestAnimationFrame(() => {
+      raf2 = requestAnimationFrame(() => window.print());
+    });
+    return () => { cancelAnimationFrame(raf1); if (raf2) cancelAnimationFrame(raf2); };
+  }, [printRequestedAt]);
 
   const exportJSON = () => {
     if (!currentTrip || !state) return;
@@ -460,17 +489,17 @@ export default function TripView({
                 ? ` · ${state.foreignCurrency}${parseRate(state.exchangeRate) ? ` @ ${parseRate(state.exchangeRate)}` : ' (未设汇率)'}`
                 : ''}
             </span>
-            <span className="pill bg-white/13 border-white/22 text-white/90 hero-pill">
+            <span className="no-print pill bg-white/13 border-white/22 text-white/90 hero-pill">
               {editUnlocked ? '✏️ 可编辑' : shareToken ? '🔐 安全分享' : readOnly ? '🔗 只读查看' : '👀 只读查看'}
             </span>
             {!readOnly && !shareToken && (role === 'owner' || role === 'editor') && (
-              <span className="pill bg-white/13 border-white/22 text-white/90 hero-pill text-[11.5px]">
+              <span className="no-print pill bg-white/13 border-white/22 text-white/90 hero-pill text-[11.5px]">
                 {editUnlocked ? '编辑模式' : syncStatus}
               </span>
             )}
             {viewers.length > 1 && (
               <span
-                className="pill bg-white/13 border-white/22 text-white/90 hero-pill"
+                className="no-print pill bg-white/13 border-white/22 text-white/90 hero-pill"
                 title={viewers.map((v) => `${v.name}${v.editing ? '（编辑中）' : ''}`).join('、')}
               >
                 👀 {viewers.length} 人在线{viewers.some((v) => v.editing) ? ' · 有人正在编辑' : ''}
@@ -526,9 +555,9 @@ export default function TripView({
             </button>
             <button
               className="btn bg-white/10 border-white/20 text-white/88 text-[13px] px-3.5 py-2 hover:bg-white/20 hover:border-white/40 hover:text-white hover:-translate-y-px"
-              onClick={handlePrint}
+              onClick={openPrintModal}
             >
-              🖨 打印
+              🖨 打印 / 导出 PDF
             </button>
 
             <span className="flex-1" />
@@ -572,17 +601,31 @@ export default function TripView({
             : <p className="text-muted text-[12.5px] px-2.5">还没有安排 Day</p>}
         </aside>
         <div className="min-w-0">
-          <div id="overview" className="scroll-mt-32"><Dashboard state={state} description={currentTrip.description} total={total} done={done} startDate={currentTrip.start_date} endDate={currentTrip.end_date} weather={weather} /></div>
-          <div id="prepare" className="scroll-mt-32"><Checklist state={state} editUnlocked={editUnlocked} mutate={mutate} canCheck={canCheck} onToggle={toggleCheck} /></div>
-          <div id="itinerary" className="scroll-mt-32"><DaysSection state={state} editUnlocked={editUnlocked} mutate={mutate} mutateNoSave={mutateNoSave} startDate={currentTrip.start_date} weather={weather} authorName={myPresenceName} onCollapseAll={() => mutateNoSave((s) => { s.days.forEach((_, i) => { s.collapsed[i] = true; }); })} /></div>
-          <div id="stay" className="scroll-mt-32"><HotelsSection state={state} editUnlocked={editUnlocked} mutate={mutate} authorName={myPresenceName} /></div>
-          <div id="currency" className="scroll-mt-32"><CurrencySection state={state} homeCurrency={currentTrip.home_currency} mutate={mutate} /></div>
-          <div id="transport" className="scroll-mt-32"><TransportSection state={state} editUnlocked={editUnlocked} mutate={mutate} homeCurrency={currentTrip.home_currency} /></div>
-          <div id="budget" className="scroll-mt-32"><BudgetSection state={state} editUnlocked={editUnlocked} mutate={mutate} currency={currentTrip.home_currency} /></div>
-          <div id="notes" className="scroll-mt-32"><NotesSection state={state} editUnlocked={editUnlocked} mutate={mutate} authorName={myPresenceName} /></div>
-          <div id="attachments" className="scroll-mt-32"><AttachmentsSection state={state} editUnlocked={editUnlocked} mutate={mutate} /></div>
+          <div id="overview" className={`scroll-mt-32${printSections.overview ? '' : ' print-hide'}`}><Dashboard state={state} description={currentTrip.description} total={total} done={done} startDate={currentTrip.start_date} endDate={currentTrip.end_date} weather={weather} /></div>
+          <div id="prepare" className={`scroll-mt-32${printSections.prepare ? '' : ' print-hide'}`}><Checklist state={state} editUnlocked={editUnlocked} mutate={mutate} canCheck={canCheck} onToggle={toggleCheck} /></div>
+          <div id="itinerary" className={`scroll-mt-32${printSections.itinerary ? '' : ' print-hide'}`}><DaysSection state={state} editUnlocked={editUnlocked} mutate={mutate} mutateNoSave={mutateNoSave} startDate={currentTrip.start_date} weather={weather} authorName={myPresenceName} onCollapseAll={() => mutateNoSave((s) => { s.days.forEach((_, i) => { s.collapsed[i] = true; }); })} showDiscussionInPrint={printSections.notes} /></div>
+          <div id="stay" className={`scroll-mt-32${printSections.stay ? '' : ' print-hide'}`}><HotelsSection state={state} editUnlocked={editUnlocked} mutate={mutate} authorName={myPresenceName} printOnlyIndex={printHotelFilter === 'all' ? null : printHotelFilter} showDiscussionInPrint={printSections.notes} /></div>
+          <div id="currency" className={`scroll-mt-32${printSections.currency ? '' : ' print-hide'}`}><CurrencySection state={state} homeCurrency={currentTrip.home_currency} mutate={mutate} /></div>
+          <div id="transport" className={`scroll-mt-32${printSections.transport ? '' : ' print-hide'}`}><TransportSection state={state} editUnlocked={editUnlocked} mutate={mutate} homeCurrency={currentTrip.home_currency} printOnlyIndex={printTransportFilter === 'all' ? null : printTransportFilter} /></div>
+          <div id="budget" className={`scroll-mt-32${printSections.budget ? '' : ' print-hide'}`}><BudgetSection state={state} editUnlocked={editUnlocked} mutate={mutate} currency={currentTrip.home_currency} /></div>
+          <div id="notes" className={`scroll-mt-32${printSections.notes ? '' : ' print-hide'}`}><NotesSection state={state} editUnlocked={editUnlocked} mutate={mutate} authorName={myPresenceName} /></div>
+          <div id="attachments" className={`scroll-mt-32${printSections.attachments ? '' : ' print-hide'}`}><AttachmentsSection state={state} editUnlocked={editUnlocked} mutate={mutate} /></div>
         </div>
       </div>
+
+      {showPrintModal && (
+        <PrintModal
+          state={state}
+          sections={printSections}
+          onSectionsChange={setPrintSections}
+          hotelFilter={printHotelFilter}
+          onHotelFilterChange={setPrintHotelFilter}
+          transportFilter={printTransportFilter}
+          onTransportFilterChange={setPrintTransportFilter}
+          onClose={() => setShowPrintModal(false)}
+          onPrint={confirmPrint}
+        />
+      )}
 
       {/* ── FAB save ── */}
       {editUnlocked && (

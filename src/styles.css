@@ -266,15 +266,29 @@
    Print
    ═══════════════════════════════════════════════════════════ */
 @media print {
+  @page { margin: 14mm 12mm; }
+
+  /* Chrome strips background colors/images by default when printing, which silently breaks any
+     element that communicates state purely through a fill color (checked checkboxes, the D-badge). */
+  * { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+
   body { background: #fff !important; }
   .no-print, .trip-nav, .trip-sidebar,
-  .edit-only, .modal, .toast { display: none !important; }
+  .edit-only, .modal, .toast, .print-hide { display: none !important; }
   .trip-hero { color: #000 !important; background: #fff !important; border-bottom: 2px solid #333; }
   .trip-hero * { text-shadow: none !important; }
   .trip-hero .absolute { display: none !important; }
   .hero-pill  { background: #f0f0f0 !important; color: #333 !important; border-color: #ccc !important; }
   .trip-layout { display: block !important; }
-  article, section { box-shadow: none !important; break-inside: avoid; }
+  article, section { box-shadow: none !important; }
+
+  /* Keep a leaf card (hotel/transport/activity) intact rather than splitting it across a page
+     break; keep a heading glued to what follows it instead of stranding it at a page bottom. */
+  .print-keep { break-inside: avoid; }
+  .print-head, div[class*="pb-3.5 mb-4 border-b-2"] { break-after: avoid; }
+
+  /* The weather strip is a horizontal scroller on screen — on paper let it wrap instead of clipping. */
+  .overflow-x-auto { overflow: visible !important; flex-wrap: wrap !important; }
 }
 
 /* ═══════════════════════════════════════════════════════════

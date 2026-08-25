@@ -84,6 +84,9 @@ export async function loadTrip(slug: string): Promise<TripWorkspace> {
       move: String(activity.transport_note || ''),
       fee: String(activity.fee_note || ''),
       link: activityLinks.filter((link) => link.activity_id === activity.id).map((link) => ({ label: String(link.label || ''), url: String(link.url || '') })),
+      visitHours: String(activity.visit_hours || ''),
+      closedDays: String(activity.closed_days || ''),
+      recommendedWeekdays: String(activity.recommended_weekdays || ''),
     } as Activity)),
   }));
   state.checklist = (result('读取准备清单', checklist) as Array<Record<string, unknown>>).map((item) => ({ id: String(item.id), text: String(item.text || ''), done: item.is_done === true, category: String(item.category || '其他') } as ChecklistItem));
@@ -92,10 +95,12 @@ export async function loadTrip(slug: string): Promise<TripWorkspace> {
     rank: String(item.rank_label || ''), name: String(item.name || ''), addr: String(item.address || ''), warn: String(item.warning || ''),
     pointsText: String(item.pros_cons || ''), notes: String(item.notes || ''),
     link: accommodationLinks.filter((link) => link.accommodation_id === item.id).map((link) => ({ label: String(link.label || ''), url: String(link.url || '') } as LinkItem)),
+    chosen: item.is_chosen === true,
   } as Hotel));
   state.transport = (result('读取交通', transport) as Array<Record<string, unknown>>).map((item) => ({
     type: String(item.type || ''), description: String(item.description || ''), price: String(item.price_label || ''),
     amount: item.amount === null ? '' : Number(item.amount), currency: item.currency_code === trip.home_currency ? 'home' : 'foreign',
+    chosen: item.is_chosen === true,
   } as TransportItem));
   state.budget = (result('读取预算', budget) as Array<Record<string, unknown>>).map((item) => ({
     category: String(item.category || ''), unit: String(item.unit || ''), quantity: Number(item.quantity || 0), unitPrice: Number(item.unit_price || 0),

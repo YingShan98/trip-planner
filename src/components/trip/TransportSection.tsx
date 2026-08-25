@@ -4,9 +4,10 @@ import type { Mutate, TripState } from '../../types';
 import MarkdownText from '../MarkdownText';
 
 export default function TransportSection({
-  state, editUnlocked, mutate, homeCurrency,
+  state, editUnlocked, mutate, homeCurrency, printOnlyIndex = null,
 }: {
   state: TripState; editUnlocked: boolean; mutate: Mutate; homeCurrency: string;
+  printOnlyIndex?: number | null;
 }) {
   const home    = homeCurrency || 'MYR';
   const foreign = state.foreignCurrency || '外币';
@@ -24,16 +25,29 @@ export default function TransportSection({
       ) : (
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3.5">
           {state.transport.map((x, i) => (
-            <article key={i} className="bg-surface border border-line rounded-lg p-4 shadow-xs flex flex-col gap-2.5">
+            <article
+              key={i}
+              className={`bg-surface border border-line rounded-lg p-4 shadow-xs flex flex-col gap-2.5 print-keep${printOnlyIndex != null && printOnlyIndex !== i ? ' print-hide' : ''}`}
+            >
 
-              {/* Row 1: type name + delete */}
-              <div className="flex items-start gap-2">
+              {/* Row 1: type name + final-choice toggle + delete */}
+              <div className="flex items-start gap-2 flex-wrap">
                 {editUnlocked ? <input
                     className="inp editable flex-1 font-bold text-[15px]"
                     value={x.type}
                     placeholder="交通方式 / 车型"
                     onChange={(e) => mutate((d) => { d.transport[i].type = e.target.value; })}
-                  /> : <h3 className="font-serif font-bold text-[17px] text-jade-dark">{x.type}</h3>}
+                  /> : <h3 className="flex-1 font-serif font-bold text-[17px] text-jade-dark">{x.type}</h3>}
+                {x.chosen && <span className="pill bg-jade-dark !text-white border-jade-dark">✓ 最终决定</span>}
+                {editUnlocked && (
+                  <button
+                    aria-label={x.chosen ? '取消设为最终决定' : `将「${x.type || i + 1}」设为最终决定`}
+                    className={`btn-mini edit-only shrink-0 mt-0.5 ${x.chosen ? 'bg-jade-dark !text-white border-jade-dark' : ''}`}
+                    onClick={() => mutate((d) => { d.transport.forEach((tt, ti) => { tt.chosen = ti === i ? !tt.chosen : false; }); })}
+                  >
+                    {x.chosen ? '★ 已选定' : '☆ 定为最终决定'}
+                  </button>
+                )}
                 <button
                   aria-label={`删除交通参考「${x.type || i + 1}」`}
                   className="btn-mini edit-only shrink-0 mt-0.5"

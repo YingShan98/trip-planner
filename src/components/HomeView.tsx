@@ -1,14 +1,10 @@
-import { useEffect, useRef, useState } from 'react';
-import type { ChangeEvent } from 'react';
+import { useEffect, useState } from 'react';
 import { sb } from '../lib/supabase';
 import { toast } from '../lib/toast';
 import { confirmDialog } from '../lib/confirm';
 import { dateRange, tripCountdown, tripCountdownLabel, type TripPhase } from '../lib/format';
-import { downloadJSON } from '../lib/download';
 import { createViewShare, deleteTrip } from '../lib/tripApi';
-import { normalize, templateState } from '../state';
-import type { ImportedTripMeta, TripListRow, TripState } from '../types';
-import NewTripModal from './modals/NewTripModal';
+import type { TripListRow } from '../types';
 
 export default function HomeView({
   onOpenTrip, onNewTrip, isAuthenticated,
@@ -18,10 +14,8 @@ export default function HomeView({
   isAuthenticated: boolean;
 }) {
   const [trips, setTrips] = useState<TripListRow[]>([]);
-  const [importPayload, setImportPayload] = useState<{ meta: ImportedTripMeta; data: TripState } | null>(null);
   const [search, setSearch] = useState('');
   const [sortByDeparture, setSortByDeparture] = useState(false);
-  const fileInputRef = useRef<HTMLInputElement>(null);
 
   const loadTrips = async () => {
     if (!sb || !isAuthenticated) { setTrips([]); return; }
@@ -53,25 +47,6 @@ export default function HomeView({
       await navigator.clipboard.writeText(url.href);
       toast('安全只读分享链接已复制');
     } catch (error) { toast('分享失败：' + (error as Error).message); }
-  };
-
-  const downloadTemplate = () => {
-    downloadJSON('trip-template.json', {
-      meta: { title: '旅行名称', destination: '目的地', start_date: '2027-01-01', end_date: '2027-01-07', currency: 'MYR', description: '旅行简介' },
-      data: templateState(),
-    });
-  };
-
-  const handleFileChange = async (e: ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    e.target.value = '';
-    if (!file) return;
-    try {
-      const obj = JSON.parse(await file.text());
-      setImportPayload({ meta: obj.meta || {}, data: normalize(obj.data || obj) });
-    } catch (err) {
-      toast('JSON 格式无效：' + (err as Error).message);
-    }
   };
 
   const q = search.trim().toLowerCase();
@@ -122,8 +97,7 @@ export default function HomeView({
           <h2 className="font-serif text-[19px] font-bold text-jade-dark">旅程收藏</h2>
           <div className="flex flex-wrap gap-2 items-center">
             <span className="text-muted text-[13px]">{sortedTrips.length} / {trips.length} 个旅行</span>
-            {isAuthenticated && <><button className="btn-ghost" onClick={downloadTemplate}>下载模板</button><button className="btn-ghost" onClick={() => fileInputRef.current?.click()}>导入 JSON</button></>}
-            <input ref={fileInputRef} type="file" accept="application/json,.json" className="hidden" onChange={handleFileChange} />
+            {isAuthenticated && <button className="btn-ghost" onClick={onNewTrip}>＋ 新建 / 导入旅行</button>}
           </div>
         </div>
 
@@ -211,15 +185,6 @@ export default function HomeView({
           </div>
         )}
       </section>
-
-      {importPayload && (
-        <NewTripModal
-          initialMeta={importPayload.meta}
-          initialData={importPayload.data}
-          onClose={() => setImportPayload(null)}
-          onCreated={(createdSlug) => { setImportPayload(null); onOpenTrip(createdSlug); }}
-        />
-      )}
     </main>
   );
 }
