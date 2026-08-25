@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from 'react';
 import { sb } from '../../lib/supabase';
 import { toast } from '../../lib/toast';
 import Modal from '../Modal';
-import { isAnonymousUser } from '../../lib/guestAuth';
+import { getExistingGuestUser, isAnonymousUser } from '../../lib/guestAuth';
 import HCaptcha from '@hcaptcha/react-hcaptcha';
 
 export default function AuthModal({ onClose }: { onClose: () => void }) {
@@ -15,7 +15,10 @@ export default function AuthModal({ onClose }: { onClose: () => void }) {
   const captchaRef = useRef<HCaptcha>(null);
 
   useEffect(() => {
-    if (sb) sb.auth.getUser().then(({ data }) => setGuestSession(isAnonymousUser(data.user)));
+    if (!sb) return;
+    getExistingGuestUser()
+      .then((user) => setGuestSession(isAnonymousUser(user)))
+      .catch((error) => toast((error as Error).message));
   }, []);
 
   const submit = async () => {
@@ -28,20 +31,27 @@ export default function AuthModal({ onClose }: { onClose: () => void }) {
       return;
     }
     setBusy(true);
-    const response = mode === 'signIn'
-      ? await sb.auth.signInWithPassword({ email: email.trim(), password, options: { captchaToken: captchaToken || undefined } })
-      : guestSession
-        ? await sb.auth.updateUser({ email: email.trim(), password })
-        : await sb.auth.signUp({ email: email.trim(), password, options: { captchaToken: captchaToken || undefined } });
-    setBusy(false);
-    if (response.error) {
+    try {
+      const response = mode === 'signIn'
+        ? await sb.auth.signInWithPassword({ email: email.trim(), password, options: { captchaToken: captchaToken || undefined } })
+        : guestSession
+          ? await sb.auth.updateUser({ email: email.trim(), password })
+          : await sb.auth.signUp({ email: email.trim(), password, options: { captchaToken: captchaToken || undefined } });
+      if (response.error) {
+        captchaRef.current?.resetCaptcha();
+        setCaptchaToken(null);
+        toast(response.error.message);
+        return;
+      }
+      toast(mode === 'signIn' ? '已登录' : guestSession ? '访客身份已升级，请检查邮箱确认' : '注册成功，请检查邮箱确认');
+      onClose();
+    } catch (error) {
       captchaRef.current?.resetCaptcha();
       setCaptchaToken(null);
-      toast(response.error.message);
-      return;
+      toast((error as Error).message);
+    } finally {
+      setBusy(false);
     }
-    toast(mode === 'signIn' ? '已登录' : guestSession ? '访客身份已升级，请检查邮箱确认' : '注册成功，请检查邮箱确认');
-    onClose();
   };
 
   return (

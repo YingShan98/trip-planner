@@ -43,7 +43,13 @@ export default function App() {
 
   useEffect(() => {
     if (!sb) return;
-    sb.auth.getUser().then(({ data }) => { setUser(isAnonymousUser(data.user) ? null : data.user); setAuthReady(true); });
+    sb.auth.getUser()
+      .then(({ data, error }) => {
+        if (error) { toast('无法检查登录状态：' + error.message); return; }
+        setUser(isAnonymousUser(data.user) ? null : data.user);
+      })
+      .catch((error) => toast('无法检查登录状态：' + (error as Error).message))
+      .finally(() => setAuthReady(true));
   }, []);
 
   useEffect(() => {

@@ -323,7 +323,8 @@ export default function TripView({
   const handleDeleteCurrent = async () => {
     if (!currentTrip) return;
     if (!await confirmDialog(`删除「${currentTrip.title}」？此操作不可恢复，所有行程内容都会被永久删除。`, { title: '删除旅行', confirmLabel: '删除', danger: true })) return;
-    if (await deleteTrip(slug)) onDeleted();
+    try { await deleteTrip(slug); onDeleted(); }
+    catch (error) { toast('删除失败：' + (error as Error).message); }
   };
 
   const createShareLink = async () => {
