@@ -87,6 +87,7 @@ export async function loadTrip(slug: string): Promise<TripWorkspace> {
       visitHours: String(activity.visit_hours || ''),
       closedDays: String(activity.closed_days || ''),
       recommendedWeekdays: String(activity.recommended_weekdays || ''),
+      imageUrl: String(activity.image_url || ''),
     } as Activity)),
   }));
   state.checklist = (result('读取准备清单', checklist) as Array<Record<string, unknown>>).map((item) => ({ id: String(item.id), text: String(item.text || ''), done: item.is_done === true, category: String(item.category || '其他') } as ChecklistItem));

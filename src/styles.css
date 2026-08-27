@@ -289,6 +289,9 @@
 
   /* The weather strip is a horizontal scroller on screen — on paper let it wrap instead of clipping. */
   .overflow-x-auto { overflow: visible !important; flex-wrap: wrap !important; }
+
+  /* Activity photos stay in the printout but shrink — a trip can have dozens of them. */
+  .activity-image { height: 70px !important; }
 }
 
 /* ═══════════════════════════════════════════════════════════

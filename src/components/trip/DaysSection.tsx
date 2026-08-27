@@ -97,6 +97,20 @@ function ActivityRow({ a, di, ai, total, editUnlocked, mutate }: {
           <div className="rich-field"><span className="rich-label">费用</span><MarkdownText text={a.fee} /></div>
         ) : null}
       </div>
+      {editUnlocked && (
+        <input className="inp editable mt-2" value={a.imageUrl} placeholder="图片链接（可选），如 https://…"
+          onChange={(e) => mutate((d) => { d.days[di].items[ai].imageUrl = e.target.value; })} />
+      )}
+      {a.imageUrl && (
+        <img
+          key={a.imageUrl}
+          src={a.imageUrl}
+          alt={a.x || ''}
+          loading="lazy"
+          className="activity-image mt-2 h-40 w-full object-cover rounded border border-line bg-surface-2"
+          onError={(e) => { (e.currentTarget as HTMLImageElement).style.display = 'none'; }}
+        />
+      )}
       {(editUnlocked || a.visitHours || a.closedDays || a.recommendedWeekdays) && (
         <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 mt-2.5 pt-2.5 border-t border-dashed border-line">
           {editUnlocked ? (

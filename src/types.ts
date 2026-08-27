@@ -20,6 +20,8 @@ export interface Activity {
   closedDays: string;
   /** Best weekdays to go, e.g. "周一至周四优先". */
   recommendedWeekdays: string;
+  /** Photo of the place, e.g. a pasted URL. */
+  imageUrl: string;
 }
 
 export interface Day {
