@@ -25,7 +25,7 @@ export function defaultDay(n: number): Day {
 }
 
 export function defaultActivity(): Activity {
-  return { t: '上午', x: '', move: '', fee: '', link: [], visitHours: '', closedDays: '', recommendedWeekdays: '', imageUrl: '' };
+  return { t: '上午', x: '', move: '', fee: '', link: [], visitHours: '', closedDays: '', recommendedWeekdays: '', imageUrl: '', duration: '', accessibility: '', alternative: '', earlyExit: '' };
 }
 
 export function defaultHotel(): Hotel {
@@ -60,6 +60,10 @@ export function templateState(): TripState {
             closedDays: '示例：全年开放',
             recommendedWeekdays: '示例：周一至周四优先，避开周末',
             imageUrl: '',
+            duration: '示例：约1.5小时',
+            accessibility: '示例：有电梯直达，轮椅可通行',
+            alternative: '示例：附近咖啡厅休息',
+            earlyExit: '示例：可提前离开直接前往午餐地点',
           },
         ],
         notes: '示例：老人可在附近咖啡厅休息',

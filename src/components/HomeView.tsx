@@ -21,7 +21,7 @@ export default function HomeView({
     if (!sb || !isAuthenticated) { setTrips([]); return; }
     const { data, error } = await sb
       .from('trips')
-      .select('id,slug,title,destination,start_date,end_date,home_currency,description,updated_at,cover_image_url')
+      .select('id,slug,title,destination,start_date,end_date,home_currency,description,updated_at,cover_image_url,variant_label,audience_label')
       .order('updated_at', { ascending: false });
     if (error) { toast('无法读取旅行列表：' + error.message); return; }
     setTrips((data || []) as TripListRow[]);
@@ -146,6 +146,7 @@ export default function HomeView({
                   <div>
                     <h3 className="font-serif text-[17px] font-bold text-jade-dark leading-[1.3] mb-2">{t.title}</h3>
                     <div className="flex flex-wrap gap-1.5">
+                      {t.variant_label && <span className="pill bg-jade-tint border-jade-tint text-jade-dark font-semibold">🏷️ {t.variant_label}</span>}
                       <span className="pill">📍 {t.destination || '目的地待定'}</span>
                       <span className="pill">📅 {dateRange(t)}</span>
                       <span className="pill">💰 {t.home_currency || 'MYR'}</span>
@@ -154,6 +155,9 @@ export default function HomeView({
                       )}
                     </div>
                   </div>
+                  {t.audience_label && (
+                    <p className="text-muted text-[12px] leading-[1.5] m-0">👥 适合：{t.audience_label}</p>
+                  )}
                   {t.description && (
                     <p className="text-muted text-[13px] leading-[1.55] flex-1">{t.description}</p>
                   )}

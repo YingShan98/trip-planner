@@ -425,7 +425,7 @@ export default function TripView({
   const exportJSON = () => {
     if (!currentTrip || !state) return;
     downloadJSON((slug || 'trip') + '.json', {
-    meta: { title: currentTrip.title, destination: currentTrip.destination, start_date: currentTrip.start_date, end_date: currentTrip.end_date, currency: currentTrip.home_currency, description: currentTrip.description, cover_image_url: currentTrip.cover_image_url },
+    meta: { title: currentTrip.title, destination: currentTrip.destination, start_date: currentTrip.start_date, end_date: currentTrip.end_date, currency: currentTrip.home_currency, description: currentTrip.description, cover_image_url: currentTrip.cover_image_url, variant: currentTrip.variant_label, audience: currentTrip.audience_label },
       data: state,
     });
   };
@@ -479,6 +479,12 @@ export default function TripView({
           </p>
 
           <div className="flex flex-wrap gap-2 mt-4">
+            {currentTrip.variant_label && (
+              <span className="pill bg-white/13 border-white/22 text-white/90 hero-pill">🏷️ {currentTrip.variant_label}</span>
+            )}
+            {currentTrip.audience_label && (
+              <span className="pill bg-white/13 border-white/22 text-white/90 hero-pill">👥 {currentTrip.audience_label}</span>
+            )}
             {tripCountdownLabel(currentTrip.start_date, currentTrip.end_date) && (
               <span className="pill bg-white/13 border-white/22 text-white/90 hero-pill">
                 🗓️ {tripCountdownLabel(currentTrip.start_date, currentTrip.end_date)}

@@ -18,6 +18,10 @@ export interface TripMeta {
   visibility: 'private' | 'public' | 'link';
   owner_id: string | null;
   cover_image_url: string | null;
+  /** Which version of the trip this is, e.g. "young" / "relaxed" — for trips with multiple itineraries for different subgroups. */
+  variant_label: string;
+  /** Who this variant is meant for, e.g. "年长人士／行动不便人士". */
+  audience_label: string;
   /** Incremented by save_trip_workspace on every content save; used as an optimistic-concurrency token. */
   content_version: number;
   created_at: string;
@@ -41,7 +45,7 @@ function result<T>(label: string, response: { data: T | null; error: { message: 
   return response.data as T;
 }
 
-const TRIP_META_COLUMNS = 'id,slug,title,destination,description,start_date,end_date,home_currency,foreign_currency,exchange_rate,checklist_categories,packing_categories,visibility,owner_id,cover_image_url,content_version,created_at,updated_at';
+const TRIP_META_COLUMNS = 'id,slug,title,destination,description,start_date,end_date,home_currency,foreign_currency,exchange_rate,checklist_categories,packing_categories,visibility,owner_id,cover_image_url,variant_label,audience_label,content_version,created_at,updated_at';
 
 export async function loadTrip(slug: string): Promise<TripWorkspace> {
   const client = requireClient();
@@ -88,6 +92,10 @@ export async function loadTrip(slug: string): Promise<TripWorkspace> {
       closedDays: String(activity.closed_days || ''),
       recommendedWeekdays: String(activity.recommended_weekdays || ''),
       imageUrl: String(activity.image_url || ''),
+      duration: String(activity.duration || ''),
+      accessibility: String(activity.accessibility || ''),
+      alternative: String(activity.alternative || ''),
+      earlyExit: String(activity.early_exit || ''),
     } as Activity)),
   }));
   state.checklist = (result('读取准备清单', checklist) as Array<Record<string, unknown>>).map((item) => ({ id: String(item.id), text: String(item.text || ''), done: item.is_done === true, category: String(item.category || '其他') } as ChecklistItem));
@@ -176,12 +184,12 @@ export async function setTripEditPassword(tripId: string, password: string): Pro
   if (response.error || response.data !== true) throw new Error(response.error?.message || '密码设置失败');
 }
 
-export async function createTrip(input: { slug: string; title: string; destination: string; start_date: string | null; end_date: string | null; home_currency: string; description: string; cover_image_url?: string | null; state: TripState }) {
+export async function createTrip(input: { slug: string; title: string; destination: string; start_date: string | null; end_date: string | null; home_currency: string; description: string; cover_image_url?: string | null; variant_label?: string; audience_label?: string; state: TripState }) {
   const client = requireClient();
   const { data: userData, error: userError } = await client.auth.getUser();
   if (userError) throw new Error(`读取登录用户：${userError.message}`);
   if (!userData.user) throw new Error('请先登录');
-  const trip = result('创建旅行', await client.from('trips').insert({ owner_id: userData.user.id, slug: input.slug, title: input.title, destination: input.destination, start_date: input.start_date, end_date: input.end_date, home_currency: input.home_currency, description: input.description, visibility: 'public', foreign_currency: input.state.foreignCurrency || '', exchange_rate: input.state.exchangeRate === '' ? null : Number(input.state.exchangeRate), cover_image_url: input.cover_image_url?.trim() || null }).select('slug').single()) as { slug: string };
+  const trip = result('创建旅行', await client.from('trips').insert({ owner_id: userData.user.id, slug: input.slug, title: input.title, destination: input.destination, start_date: input.start_date, end_date: input.end_date, home_currency: input.home_currency, description: input.description, visibility: 'public', foreign_currency: input.state.foreignCurrency || '', exchange_rate: input.state.exchangeRate === '' ? null : Number(input.state.exchangeRate), cover_image_url: input.cover_image_url?.trim() || null, variant_label: input.variant_label?.trim() || '', audience_label: input.audience_label?.trim() || '' }).select('slug').single()) as { slug: string };
   try {
     await saveTrip(trip.slug, input.state, 0);
   } catch (error) {

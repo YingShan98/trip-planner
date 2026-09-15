@@ -21,6 +21,8 @@ export default function SettingsModal({ trip, onClose, onSaved }: {
   const [end, setEnd] = useState(trip.end_date || '');
   const [description, setDescription] = useState(trip.description);
   const [coverImageUrl, setCoverImageUrl] = useState(trip.cover_image_url || '');
+  const [variantLabel, setVariantLabel] = useState(trip.variant_label || '');
+  const [audienceLabel, setAudienceLabel] = useState(trip.audience_label || '');
   const [fetchingImage, setFetchingImage] = useState(false);
   const [fetchingRate, setFetchingRate] = useState(false);
   const [revoking, setRevoking] = useState(false);
@@ -53,9 +55,10 @@ export default function SettingsModal({ trip, onClose, onSaved }: {
       title: title.trim(), destination: destination.trim(), home_currency: currency.trim() || 'MYR',
       foreign_currency: foreignCurrency.trim(), exchange_rate: exchangeRate === '' ? null : Number(exchangeRate),
       start_date: start || null, end_date: end || null, description, cover_image_url: coverImageUrl.trim() || null,
+      variant_label: variantLabel.trim(), audience_label: audienceLabel.trim(),
     }).eq('id', trip.id);
     if (error) { toast(`保存失败：${error.message}`); return; }
-    onSaved({ title: title.trim(), destination: destination.trim(), home_currency: currency.trim() || 'MYR', foreign_currency: foreignCurrency.trim(), exchange_rate: exchangeRate === '' ? null : Number(exchangeRate), start_date: start || null, end_date: end || null, description, cover_image_url: coverImageUrl.trim() || null });
+    onSaved({ title: title.trim(), destination: destination.trim(), home_currency: currency.trim() || 'MYR', foreign_currency: foreignCurrency.trim(), exchange_rate: exchangeRate === '' ? null : Number(exchangeRate), start_date: start || null, end_date: end || null, description, cover_image_url: coverImageUrl.trim() || null, variant_label: variantLabel.trim(), audience_label: audienceLabel.trim() });
     toast('旅行设置已更新');
     onClose();
   };
@@ -111,6 +114,8 @@ export default function SettingsModal({ trip, onClose, onSaved }: {
             />
           )}
         </div>
+        <div className="field"><label>版本（多个版本供不同团员选择时填写，如「轻松版」）</label><input className="inp" placeholder="例如：young / relaxed" value={variantLabel} onChange={(e) => setVariantLabel(e.target.value)} /></div>
+        <div className="field"><label>适合人群</label><input className="inp" placeholder="例如：年长人士／行动不便人士" value={audienceLabel} onChange={(e) => setAudienceLabel(e.target.value)} /></div>
         <div className="field col-span-2"><label>简介</label><textarea className="inp min-h-[100px] resize-y" value={description} onChange={(e) => setDescription(e.target.value)} /></div>
       </div>
       <div className="flex justify-end mt-5 pt-4 border-t border-line"><button className="btn-primary" onClick={save}>保存设置</button></div>

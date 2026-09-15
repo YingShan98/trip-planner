@@ -26,13 +26,15 @@ export default function NewTripModal({ onClose, onCreated }: {
   const [slug, setSlug] = useState('');
   const [description, setDescription] = useState('');
   const [coverImageUrl, setCoverImageUrl] = useState('');
+  const [variantLabel, setVariantLabel] = useState('');
+  const [audienceLabel, setAudienceLabel] = useState('');
   const [fetchingImage, setFetchingImage] = useState(false);
   const [busy, setBusy] = useState(false);
   const [showValidation, setShowValidation] = useState(false);
 
   const downloadTemplate = () => {
     downloadJSON('trip-template.json', {
-      meta: { title: '旅行名称', destination: '目的地', start_date: '2027-01-01', end_date: '2027-01-07', currency: 'MYR', description: '旅行简介' },
+      meta: { title: '旅行名称', destination: '目的地', start_date: '2027-01-01', end_date: '2027-01-07', currency: 'MYR', description: '旅行简介', variant: '示例：relaxed', audience: '示例：年长人士／行动不便人士' },
       data: templateState(),
     });
   };
@@ -56,6 +58,8 @@ export default function NewTripModal({ onClose, onCreated }: {
     if (meta.end_date) setEnd(meta.end_date);
     if (meta.description) setDescription(meta.description);
     if (meta.cover_image_url) setCoverImageUrl(meta.cover_image_url);
+    if (meta.variant) setVariantLabel(meta.variant);
+    if (meta.audience) setAudienceLabel(meta.audience);
     toast('已从 JSON 载入行程内容，请检查下方信息并填写 Slug');
   };
 
@@ -94,7 +98,8 @@ export default function NewTripModal({ onClose, onCreated }: {
     try {
       const createdSlug = await createTrip({
         slug: cleanSlug, title: title.trim(), destination: destination.trim(), start_date: start || null,
-        end_date: end || null, home_currency: currency.trim() || 'MYR', description, cover_image_url: coverImageUrl.trim(), state: importedData || blankState(),
+        end_date: end || null, home_currency: currency.trim() || 'MYR', description, cover_image_url: coverImageUrl.trim(),
+        variant_label: variantLabel.trim(), audience_label: audienceLabel.trim(), state: importedData || blankState(),
       });
       toast('旅行已创建');
       onClose();
@@ -202,6 +207,8 @@ export default function NewTripModal({ onClose, onCreated }: {
             />
           )}
         </div>
+        <div className="field"><label>版本（多个版本供不同团员选择时填写，如「轻松版」）</label><input className="inp" placeholder="例如：young / relaxed" value={variantLabel} onChange={(e) => setVariantLabel(e.target.value)} /></div>
+        <div className="field"><label>适合人群</label><input className="inp" placeholder="例如：年长人士／行动不便人士" value={audienceLabel} onChange={(e) => setAudienceLabel(e.target.value)} /></div>
         <div className="field sm:col-span-2"><label>简介</label><textarea className="inp min-h-[100px] resize-y" placeholder="旅行目标、人数、注意事项……" value={description} onChange={(e) => setDescription(e.target.value)} /></div>
       </div>
       <div className="flex justify-end mt-5 pt-4 border-t border-line"><button className="btn-primary" disabled={busy} onClick={create}>{busy ? '创建中…' : '创建旅行'}</button></div>

@@ -133,6 +133,34 @@ function ActivityRow({ a, di, ai, total, editUnlocked, mutate }: {
           ) : null}
         </div>
       )}
+      {(editUnlocked || a.duration || a.accessibility || a.alternative || a.earlyExit) && (
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 mt-2.5 pt-2.5 border-t border-dashed border-line">
+          {editUnlocked ? (
+            <input className="inp editable text-[12.5px]" value={a.duration} placeholder="建议停留时长，如约2小时"
+              onChange={(e) => mutate((d) => { d.days[di].items[ai].duration = e.target.value; })} />
+          ) : a.duration ? (
+            <div className="rich-field"><span className="rich-label">建议时长</span><MarkdownText text={a.duration} /></div>
+          ) : null}
+          {editUnlocked ? (
+            <input className="inp editable text-[12.5px]" value={a.accessibility} placeholder="无障碍/行动不便提示"
+              onChange={(e) => mutate((d) => { d.days[di].items[ai].accessibility = e.target.value; })} />
+          ) : a.accessibility ? (
+            <div className="rich-field"><span className="rich-label">无障碍提示</span><MarkdownText text={a.accessibility} /></div>
+          ) : null}
+          {editUnlocked ? (
+            <input className="inp editable text-[12.5px]" value={a.alternative} placeholder="备选方案，如不适合久走可改为…"
+              onChange={(e) => mutate((d) => { d.days[di].items[ai].alternative = e.target.value; })} />
+          ) : a.alternative ? (
+            <div className="rich-field"><span className="rich-label">备选方案</span><MarkdownText text={a.alternative} /></div>
+          ) : null}
+          {editUnlocked ? (
+            <input className="inp editable text-[12.5px]" value={a.earlyExit} placeholder="提前离开选项"
+              onChange={(e) => mutate((d) => { d.days[di].items[ai].earlyExit = e.target.value; })} />
+          ) : a.earlyExit ? (
+            <div className="rich-field"><span className="rich-label">提前离开</span><MarkdownText text={a.earlyExit} /></div>
+          ) : null}
+        </div>
+      )}
       <LinkRows di={di} ai={ai} links={a.link} editUnlocked={editUnlocked} mutate={mutate} />
     </div>
   );

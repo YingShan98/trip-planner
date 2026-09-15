@@ -303,7 +303,9 @@ alter table public.trips
   add column if not exists cover_image_url text,
   add column if not exists checklist_categories text[] not null default '{}',
   add column if not exists packing_categories text[] not null default '{}',
-  add column if not exists content_version bigint not null default 0;
+  add column if not exists content_version bigint not null default 0,
+  add column if not exists variant_label text not null default '',
+  add column if not exists audience_label text not null default '';
 
 alter table public.trip_notes
   add column if not exists target_type text check (target_type in ('hotel', 'day')),
@@ -322,7 +324,11 @@ alter table public.activities
   add column if not exists visit_hours text not null default '',
   add column if not exists closed_days text not null default '',
   add column if not exists recommended_weekdays text not null default '',
-  add column if not exists image_url text not null default '';
+  add column if not exists image_url text not null default '',
+  add column if not exists duration text not null default '',
+  add column if not exists accessibility text not null default '',
+  add column if not exists alternative text not null default '',
+  add column if not exists early_exit text not null default '';
 
 -- Role helper used by RLS and transactional RPCs.
 create or replace function public.trip_role(p_trip_id uuid)
@@ -454,7 +460,7 @@ begin
   for v_day in select value from jsonb_array_elements(coalesce(p_state->'days','[]'::jsonb)) loop
     insert into public.trip_days(trip_id, day_number, title, intensity, walking_note, map_url, notes) values (p_trip_id, v_index + 1, coalesce(v_day->>'title','Day ' || (v_index + 1)), coalesce(v_day->>'intensity','light'), coalesce(v_day->>'steps',''), coalesce(v_day->>'mapUrl',''), coalesce(v_day->>'notes','')) returning id into v_day_id;
     for v_activity in select value from jsonb_array_elements(coalesce(v_day->'items','[]'::jsonb)) loop
-      insert into public.activities(day_id, sort_order, time_label, title, transport_note, fee_note, visit_hours, closed_days, recommended_weekdays, image_url) values (v_day_id, v_index, coalesce(v_activity->>'t',''), coalesce(v_activity->>'x',''), coalesce(v_activity->>'move',''), coalesce(v_activity->>'fee',''), coalesce(v_activity->>'visitHours',''), coalesce(v_activity->>'closedDays',''), coalesce(v_activity->>'recommendedWeekdays',''), coalesce(v_activity->>'imageUrl','')) returning id into v_activity_id;
+      insert into public.activities(day_id, sort_order, time_label, title, transport_note, fee_note, visit_hours, closed_days, recommended_weekdays, image_url, duration, accessibility, alternative, early_exit) values (v_day_id, v_index, coalesce(v_activity->>'t',''), coalesce(v_activity->>'x',''), coalesce(v_activity->>'move',''), coalesce(v_activity->>'fee',''), coalesce(v_activity->>'visitHours',''), coalesce(v_activity->>'closedDays',''), coalesce(v_activity->>'recommendedWeekdays',''), coalesce(v_activity->>'imageUrl',''), coalesce(v_activity->>'duration',''), coalesce(v_activity->>'accessibility',''), coalesce(v_activity->>'alternative',''), coalesce(v_activity->>'earlyExit','')) returning id into v_activity_id;
       v_index := v_index + 1;
       for v_link in select value from jsonb_array_elements(coalesce(v_activity->'link','[]'::jsonb)) loop
         if nullif(trim(v_link->>'url'), '') is not null then insert into public.activity_links(activity_id, label, url, sort_order) values (v_activity_id, coalesce(nullif(v_link->>'label',''), v_link->>'url'), v_link->>'url', 0); end if;
@@ -573,9 +579,9 @@ begin
   select trip_id into v_trip_id from public.trip_shares where token_hash = p_token_hash and revoked_at is null and (expires_at is null or expires_at > now()) limit 1;
   if v_trip_id is null then return null; end if;
   select (edit_password_hash is not null) into v_requires_password from public.trips where id = v_trip_id;
-  select jsonb_build_object('id', t.id, 'slug', t.slug, 'title', t.title, 'destination', t.destination, 'description', t.description, 'start_date', t.start_date, 'end_date', t.end_date, 'home_currency', t.home_currency, 'foreign_currency', t.foreign_currency, 'exchange_rate', t.exchange_rate, 'checklist_categories', to_jsonb(t.checklist_categories), 'packing_categories', to_jsonb(t.packing_categories), 'visibility', t.visibility, 'owner_id', t.owner_id, 'cover_image_url', t.cover_image_url, 'content_version', t.content_version, 'created_at', t.created_at, 'updated_at', t.updated_at) into v_trip from public.trips t where t.id = v_trip_id;
+  select jsonb_build_object('id', t.id, 'slug', t.slug, 'title', t.title, 'destination', t.destination, 'description', t.description, 'start_date', t.start_date, 'end_date', t.end_date, 'home_currency', t.home_currency, 'foreign_currency', t.foreign_currency, 'exchange_rate', t.exchange_rate, 'checklist_categories', to_jsonb(t.checklist_categories), 'packing_categories', to_jsonb(t.packing_categories), 'visibility', t.visibility, 'owner_id', t.owner_id, 'cover_image_url', t.cover_image_url, 'variant_label', t.variant_label, 'audience_label', t.audience_label, 'content_version', t.content_version, 'created_at', t.created_at, 'updated_at', t.updated_at) into v_trip from public.trips t where t.id = v_trip_id;
   select jsonb_build_object(
-    'days', coalesce((select jsonb_agg(jsonb_build_object('n', d.day_number, 'title', d.title, 'intensity', d.intensity, 'steps', d.walking_note, 'mapUrl', d.map_url, 'notes', d.notes, 'items', coalesce((select jsonb_agg(jsonb_build_object('t', a.time_label, 'x', a.title, 'move', a.transport_note, 'fee', a.fee_note, 'visitHours', a.visit_hours, 'closedDays', a.closed_days, 'recommendedWeekdays', a.recommended_weekdays, 'imageUrl', a.image_url, 'link', coalesce((select jsonb_agg(jsonb_build_object('label', l.label, 'url', l.url) order by l.sort_order) from public.activity_links l where l.activity_id = a.id), '[]'::jsonb)) order by a.sort_order) from public.activities a where a.day_id = d.id), '[]'::jsonb)) order by d.day_number) from public.trip_days d where d.trip_id = v_trip_id), '[]'::jsonb),
+    'days', coalesce((select jsonb_agg(jsonb_build_object('n', d.day_number, 'title', d.title, 'intensity', d.intensity, 'steps', d.walking_note, 'mapUrl', d.map_url, 'notes', d.notes, 'items', coalesce((select jsonb_agg(jsonb_build_object('t', a.time_label, 'x', a.title, 'move', a.transport_note, 'fee', a.fee_note, 'visitHours', a.visit_hours, 'closedDays', a.closed_days, 'recommendedWeekdays', a.recommended_weekdays, 'imageUrl', a.image_url, 'duration', a.duration, 'accessibility', a.accessibility, 'alternative', a.alternative, 'earlyExit', a.early_exit, 'link', coalesce((select jsonb_agg(jsonb_build_object('label', l.label, 'url', l.url) order by l.sort_order) from public.activity_links l where l.activity_id = a.id), '[]'::jsonb)) order by a.sort_order) from public.activities a where a.day_id = d.id), '[]'::jsonb)) order by d.day_number) from public.trip_days d where d.trip_id = v_trip_id), '[]'::jsonb),
     'checklist', coalesce((select jsonb_agg(jsonb_build_object('id', c.id, 'text', c.text, 'done', c.is_done, 'category', c.category) order by c.sort_order) from public.checklist_items c where c.trip_id = v_trip_id), '[]'::jsonb),
     'packing', coalesce((select jsonb_agg(jsonb_build_object('id', p.id, 'text', p.text, 'done', p.is_done, 'category', p.category) order by p.sort_order) from public.packing_items p where p.trip_id = v_trip_id), '[]'::jsonb),
     'hotels', coalesce((select jsonb_agg(jsonb_build_object('rank', h.rank_label, 'name', h.name, 'addr', h.address, 'warn', h.warning, 'pointsText', h.pros_cons, 'notes', h.notes, 'chosen', h.is_chosen, 'link', coalesce((select jsonb_agg(jsonb_build_object('label', l.label, 'url', l.url) order by l.sort_order) from public.accommodation_links l where l.accommodation_id = h.id), '[]'::jsonb)) order by h.sort_order) from public.accommodations h where h.trip_id = v_trip_id), '[]'::jsonb),

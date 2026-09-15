@@ -22,6 +22,14 @@ export interface Activity {
   recommendedWeekdays: string;
   /** Photo of the place, e.g. a pasted URL. */
   imageUrl: string;
+  /** Suggested time to spend here, e.g. "约2小时". Distinct from `t`, which is the scheduled time slot. */
+  duration: string;
+  /** Wheelchair/elderly/mobility notes, e.g. entrance ramps, restroom access. */
+  accessibility: string;
+  /** What to do instead if this stop isn't a good fit for everyone in the group. */
+  alternative: string;
+  /** How/when to leave early and what to do next. */
+  earlyExit: string;
 }
 
 export interface Day {
@@ -121,6 +129,10 @@ export interface ImportedTripMeta {
   end_date?: string | null;
   description?: string;
   cover_image_url?: string | null;
+  /** Which version of the trip this is, e.g. "young" / "relaxed" — for trips with multiple itineraries for different subgroups. */
+  variant?: string;
+  /** Who this variant is meant for, e.g. "年长人士／行动不便人士". */
+  audience?: string;
 }
 
 export interface TripListRow {
@@ -134,4 +146,6 @@ export interface TripListRow {
   description: string;
   updated_at: string;
   cover_image_url: string | null;
+  variant_label: string;
+  audience_label: string;
 }
