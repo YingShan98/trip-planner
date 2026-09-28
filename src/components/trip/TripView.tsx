@@ -473,12 +473,16 @@ export default function TripView({
     const conv = convertAmount(raw, x.currency, exchangeRateValue);
     if (conv.home !== null) budgetTotalHome += conv.home;
   }
+  const travelerCount = Number(state.travelers) || 0;
+  const budgetSummary = state.budget.length
+    ? `估算 ${formatMoney(budgetTotalHome, homeCurrency)}${travelerCount > 0 ? ` · 每人 ${formatMoney(budgetTotalHome / travelerCount, homeCurrency)}` : ''}`
+    : '暂无项目';
   const sectionSummary: Record<string, string> = {
     prepare: state.checklist.length ? `${done}/${state.checklist.length} 完成` : '暂无事项',
     stay: state.hotels.length ? `${state.hotels.length} 个候选` : '暂无候选',
     currency: exchangeRateValue ? `1 ${foreignCurrency} = ${exchangeRateValue} ${homeCurrency}` : '未设置汇率',
     transport: state.transport.length ? `${state.transport.length} 个方案` : '暂无方案',
-    budget: state.budget.length ? `估算 ${formatMoney(budgetTotalHome, homeCurrency)}` : '暂无项目',
+    budget: budgetSummary,
     notes: state.notes.length ? `${state.notes.length} 条留言` : '暂无留言',
     attachments: state.attachments.filter((a) => a.url.trim()).length
       ? `${state.attachments.filter((a) => a.url.trim()).length} 个附件` : '暂无附件',

@@ -116,6 +116,8 @@ export interface TripState {
   foreignCurrency: string;
   /** 1 unit of foreignCurrency = exchangeRate units of home currency, e.g. 1 CNY = 0.62 MYR */
   exchangeRate: number | string;
+  /** Number of people the budget total should be split across, for a per-person figure. Empty string = not set. */
+  travelers: number | string;
   /** Custom categories the user has typed for checklist/packing items, remembered even once unused. */
   checklistCategories: string[];
   packingCategories: string[];

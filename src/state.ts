@@ -15,6 +15,7 @@ export function blankState(): TripState {
     collapsed: {},
     foreignCurrency: '',
     exchangeRate: '',
+    travelers: '',
     checklistCategories: [],
     packingCategories: [],
   };
@@ -134,6 +135,7 @@ export function templateState(): TripState {
     collapsed: {},
     foreignCurrency: 'CNY',
     exchangeRate: 0.62,
+    travelers: 2,
     checklistCategories: [],
     packingCategories: [],
   };
@@ -179,5 +181,7 @@ export function normalize(s: unknown): TripState {
   x.foreignCurrency = typeof src.foreignCurrency === 'string' ? src.foreignCurrency : '';
   x.exchangeRate =
     typeof src.exchangeRate === 'number' || typeof src.exchangeRate === 'string' ? src.exchangeRate : '';
+  x.travelers =
+    typeof src.travelers === 'number' || typeof src.travelers === 'string' ? src.travelers : '';
   return x;
 }

@@ -12,14 +12,38 @@ export default function BudgetSection({
   const foreign = state.foreignCurrency || '外币';
   const rate    = parseRate(state.exchangeRate);
 
-  let unconverted = 0;
+  const travelers = Number(state.travelers) || 0;
+  let totalHome = 0, unconverted = 0;
   for (const x of state.budget) {
     const raw  = (Number(x.quantity) || 0) * (Number(x.unitPrice) || 0);
     const conv = convertAmount(raw, x.currency, rate);
-    if (conv.home === null) unconverted++;
+    if (conv.home !== null) totalHome += conv.home;
+    else unconverted++;
   }
+  const perPerson = travelers > 0 ? totalHome / travelers : null;
+
   return (
     <>
+      <div className="flex flex-wrap items-center justify-between gap-x-6 gap-y-3 mb-4 bg-jade-light border border-jade-tint rounded-lg px-4 py-3">
+        <div className="flex flex-wrap gap-x-6 gap-y-2">
+          <div>
+            <span className="block text-[11px] font-semibold text-muted uppercase tracking-[0.06em]">总计（{home}）</span>
+            <strong className="text-[18px] text-jade-dark">{formatMoney(totalHome, home)}</strong>
+          </div>
+          <div>
+            <span className="block text-[11px] font-semibold text-muted uppercase tracking-[0.06em]">每人</span>
+            <strong className="text-[18px] text-jade-dark">{perPerson !== null ? formatMoney(perPerson, home) : '未设置人数'}</strong>
+          </div>
+        </div>
+        <div className="flex items-center gap-2">
+          <span className="text-[12px] font-semibold text-muted whitespace-nowrap">同行人数</span>
+          {editUnlocked ? (
+            <input className="inp editable w-[70px] text-center" type="number" min="1" step="1" value={state.travelers}
+              placeholder="人数" onChange={(e) => mutate((d) => { d.travelers = e.target.value; })} />
+          ) : <span className="pill">{travelers > 0 ? `${travelers} 人` : '未设置'}</span>}
+        </div>
+      </div>
+
       {unconverted > 0 && (
         <p className="text-muted text-[12.5px] mb-3.5">{unconverted} 项未换算（请设置汇率）</p>
       )}

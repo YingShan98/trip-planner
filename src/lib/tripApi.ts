@@ -13,6 +13,7 @@ export interface TripMeta {
   home_currency: string;
   foreign_currency: string;
   exchange_rate: number | string | null;
+  traveler_count: number | null;
   checklist_categories: string[] | null;
   packing_categories: string[] | null;
   visibility: 'private' | 'public' | 'link';
@@ -45,7 +46,7 @@ function result<T>(label: string, response: { data: T | null; error: { message: 
   return response.data as T;
 }
 
-const TRIP_META_COLUMNS = 'id,slug,title,destination,description,start_date,end_date,home_currency,foreign_currency,exchange_rate,checklist_categories,packing_categories,visibility,owner_id,cover_image_url,variant_label,audience_label,content_version,created_at,updated_at';
+const TRIP_META_COLUMNS = 'id,slug,title,destination,description,start_date,end_date,home_currency,foreign_currency,exchange_rate,traveler_count,checklist_categories,packing_categories,visibility,owner_id,cover_image_url,variant_label,audience_label,content_version,created_at,updated_at';
 
 export async function loadTrip(slug: string): Promise<TripWorkspace> {
   const client = requireClient();
@@ -125,6 +126,7 @@ export async function loadTrip(slug: string): Promise<TripWorkspace> {
   state.attachments = (result('读取附件', attachments) as Array<Record<string, unknown>>).map((item) => ({ label: String(item.label || ''), url: String(item.url || '') } as LinkItem));
   state.foreignCurrency = trip.foreign_currency || '';
   state.exchangeRate = trip.exchange_rate ?? '';
+  state.travelers = trip.traveler_count ?? '';
   state.checklistCategories = Array.isArray(trip.checklist_categories) ? trip.checklist_categories : [];
   state.packingCategories = Array.isArray(trip.packing_categories) ? trip.packing_categories : [];
   return { trip, state };
