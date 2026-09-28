@@ -7,7 +7,7 @@ import { dayDate, formatDateWithWeekday } from '../../lib/format';
 import { weatherEmoji, type WeatherResult } from '../../lib/weather';
 import MarkdownText from '../MarkdownText';
 import CommentThread from './CommentThread';
-import { TIME_OPTIONS, isValidTimeOption } from '../../lib/activityTime';
+import { parseTimeRange, formatTimeRange } from '../../lib/activityTime';
 const intensityLabel = (i: Intensity) => i === 'light' ? '轻松' : i === 'medium' ? '中等' : '较累';
 const intensityClass = (i: Intensity) =>
   i === 'light'  ? 'bg-[#e5f4ec] text-[#2a7d52] border-[#b8ddc7]' :
@@ -62,14 +62,23 @@ function ActivityRow({ a, di, ai, total, editUnlocked, mutate }: {
 
   return (
     <div className="bg-surface-2 border border-line rounded p-3 mb-2.5 transition-all duration-150 hover:border-line-strong hover:shadow-xs print-keep">
-      <div className="grid grid-cols-1 sm:grid-cols-[100px_1fr_auto] gap-2 items-center mb-2">
+      <div className="grid grid-cols-1 sm:grid-cols-[190px_1fr_auto] gap-2 items-center mb-2">
         {editUnlocked ? (
-          <select className="inp editable sm:w-auto"
-            value={isValidTimeOption(a.t) ? a.t : ''}
-            onChange={(e) => mutate((d) => { d.days[di].items[ai].t = e.target.value; })}>
-            {!isValidTimeOption(a.t) && <option value="" disabled>{a.t ? `未知：${a.t}` : '请选择时间'}</option>}
-            {TIME_OPTIONS.map((x) => <option key={x} value={x}>{x}</option>)}
-          </select>
+          <div className="flex items-center gap-1">
+            <input type="time" aria-label="开始时间" className="inp editable !px-2 text-[12.5px] w-[86px]"
+              value={parseTimeRange(a.t).start}
+              onChange={(e) => mutate((d) => {
+                const { end } = parseTimeRange(d.days[di].items[ai].t);
+                d.days[di].items[ai].t = formatTimeRange(e.target.value, end);
+              })} />
+            <span className="text-muted text-[12px] shrink-0" aria-hidden="true">→</span>
+            <input type="time" aria-label="结束时间" className="inp editable !px-2 text-[12.5px] w-[86px]"
+              value={parseTimeRange(a.t).end}
+              onChange={(e) => mutate((d) => {
+                const { start } = parseTimeRange(d.days[di].items[ai].t);
+                d.days[di].items[ai].t = formatTimeRange(start, e.target.value);
+              })} />
+          </div>
         ) : <span className="pill justify-center">{a.t || '时间待定'}</span>}
         {editUnlocked ? (
           <input className="inp editable" value={a.x} placeholder="行程内容"

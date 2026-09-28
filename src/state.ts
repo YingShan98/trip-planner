@@ -1,5 +1,4 @@
 import type { Activity, BudgetItem, Day, Hotel, PackingItem, TransportItem, TripState } from './types';
-import { DEFAULT_TIME, isValidTimeOption } from './lib/activityTime';
 
 export const uid = (p: string) => p + '_' + Math.random().toString(36).slice(2, 8);
 
@@ -26,7 +25,7 @@ export function defaultDay(n: number): Day {
 }
 
 export function defaultActivity(): Activity {
-  return { t: DEFAULT_TIME, x: '', place: '', move: '', fee: '', link: [], visitHours: '', closedDays: '', recommendedWeekdays: '', imageUrl: '', duration: '', accessibility: '', alternative: '', earlyExit: '' };
+  return { t: '', x: '', place: '', move: '', fee: '', link: [], visitHours: '', closedDays: '', recommendedWeekdays: '', imageUrl: '', duration: '', accessibility: '', alternative: '', earlyExit: '' };
 }
 
 export function defaultHotel(): Hotel {
@@ -54,7 +53,7 @@ export function templateState(): TripState {
            `place` must be a real searchable name — it drives the map and directions links. */
         items: [
           {
-            t: '上午',
+            t: '09:00–11:00',
             x: '示例：广东省博物馆（免费，须提前预约）',
             place: '广东省博物馆',
             move: '示例：从酒店打车约 20 分钟',
@@ -70,7 +69,7 @@ export function templateState(): TripState {
             earlyExit: '示例：累了可直接步行去花城广场休息',
           },
           {
-            t: '下午',
+            t: '14:00–15:00',
             x: '示例：花城广场散步',
             place: '花城广场',
             move: '示例：步行约 15 分钟',
@@ -86,7 +85,7 @@ export function templateState(): TripState {
             earlyExit: '',
           },
           {
-            t: '傍晚',
+            t: '18:00–19:30',
             x: '示例：广州塔观景台看夜景',
             place: '广州塔',
             move: '示例：地铁 APM 线 1 站，或步行约 20 分钟',
@@ -153,7 +152,7 @@ export function normalize(s: unknown): TripState {
             ? d.items.map((a) => ({
                 ...defaultActivity(),
                 ...a,
-                t: isValidTimeOption(a.t) ? a.t : DEFAULT_TIME,
+                t: typeof a.t === 'string' ? a.t : '',
                 link: Array.isArray(a.link) ? a.link : [],
               }))
             : [],
