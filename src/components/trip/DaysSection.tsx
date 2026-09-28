@@ -7,8 +7,7 @@ import { dayDate, formatDateWithWeekday } from '../../lib/format';
 import { weatherEmoji, type WeatherResult } from '../../lib/weather';
 import MarkdownText from '../MarkdownText';
 import CommentThread from './CommentThread';
-
-const TIME_OPTIONS = ['清晨', '上午', '午间', '下午', '傍晚', '晚间', '全天'];
+import { TIME_OPTIONS, isValidTimeOption } from '../../lib/activityTime';
 const intensityLabel = (i: Intensity) => i === 'light' ? '轻松' : i === 'medium' ? '中等' : '较累';
 const intensityClass = (i: Intensity) =>
   i === 'light'  ? 'bg-[#e5f4ec] text-[#2a7d52] border-[#b8ddc7]' :
@@ -54,6 +53,7 @@ function LinkRows({ di, ai, links, editUnlocked, mutate }: {
 function ActivityRow({ a, di, ai, total, editUnlocked, mutate }: {
   a: Activity; di: number; ai: number; total: number; editUnlocked: boolean; mutate: Mutate;
 }) {
+  const [showMore, setShowMore] = useState(false);
   const moveActivity = (delta: number) => {
     const j = ai + delta;
     if (j < 0 || j >= total) return;
@@ -65,9 +65,10 @@ function ActivityRow({ a, di, ai, total, editUnlocked, mutate }: {
       <div className="grid grid-cols-1 sm:grid-cols-[100px_1fr_auto] gap-2 items-center mb-2">
         {editUnlocked ? (
           <select className="inp editable sm:w-auto"
-            value={a.t}
+            value={isValidTimeOption(a.t) ? a.t : ''}
             onChange={(e) => mutate((d) => { d.days[di].items[ai].t = e.target.value; })}>
-            {TIME_OPTIONS.map((x) => <option key={x}>{x}</option>)}
+            {!isValidTimeOption(a.t) && <option value="" disabled>{a.t ? `未知：${a.t}` : '请选择时间'}</option>}
+            {TIME_OPTIONS.map((x) => <option key={x} value={x}>{x}</option>)}
           </select>
         ) : <span className="pill justify-center">{a.t || '时间待定'}</span>}
         {editUnlocked ? (
@@ -107,10 +108,6 @@ function ActivityRow({ a, di, ai, total, editUnlocked, mutate }: {
           <div className="rich-field"><span className="rich-label">费用</span><MarkdownText text={a.fee} /></div>
         ) : null}
       </div>
-      {editUnlocked && (
-        <input className="inp editable mt-2" value={a.imageUrl} placeholder="图片链接（可选），如 https://…"
-          onChange={(e) => mutate((d) => { d.days[di].items[ai].imageUrl = e.target.value; })} />
-      )}
       {a.imageUrl && (
         <img
           key={a.imageUrl}
@@ -121,57 +118,56 @@ function ActivityRow({ a, di, ai, total, editUnlocked, mutate }: {
           onError={(e) => { (e.currentTarget as HTMLImageElement).style.display = 'none'; }}
         />
       )}
-      {(editUnlocked || a.visitHours || a.closedDays || a.recommendedWeekdays) && (
-        <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 mt-2.5 pt-2.5 border-t border-dashed border-line">
-          {editUnlocked ? (
-            <input className="inp editable text-[12.5px]" value={a.visitHours} placeholder="开放时间，如 09:00–17:30"
-              onChange={(e) => mutate((d) => { d.days[di].items[ai].visitHours = e.target.value; })} />
-          ) : a.visitHours ? (
-            <div className="rich-field"><span className="rich-label">开放时间</span><MarkdownText text={a.visitHours} /></div>
-          ) : null}
-          {editUnlocked ? (
-            <input className="inp editable text-[12.5px]" value={a.closedDays} placeholder="闭馆日，如每周二"
-              onChange={(e) => mutate((d) => { d.days[di].items[ai].closedDays = e.target.value; })} />
-          ) : a.closedDays ? (
-            <div className="rich-field"><span className="rich-label">闭馆日</span><MarkdownText text={a.closedDays} /></div>
-          ) : null}
-          {editUnlocked ? (
-            <input className="inp editable text-[12.5px]" value={a.recommendedWeekdays} placeholder="建议星期，如周一至周四优先"
-              onChange={(e) => mutate((d) => { d.days[di].items[ai].recommendedWeekdays = e.target.value; })} />
-          ) : a.recommendedWeekdays ? (
-            <div className="rich-field"><span className="rich-label">建议星期</span><MarkdownText text={a.recommendedWeekdays} /></div>
-          ) : null}
-        </div>
+      {editUnlocked ? (
+        <>
+          <button className="no-print text-jade text-[12.5px] font-medium text-left hover:underline mt-1" aria-expanded={showMore}
+            onClick={() => setShowMore((v) => !v)}>
+            {showMore ? '收起字段 ▴' : '更多字段 ▾'}
+          </button>
+          <div className={showMore ? 'flex flex-col gap-2.5' : 'hidden'}>
+            <input className="inp editable" value={a.imageUrl} placeholder="图片链接（可选），如 https://…"
+              onChange={(e) => mutate((d) => { d.days[di].items[ai].imageUrl = e.target.value; })} />
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+              <input className="inp editable text-[12.5px]" value={a.visitHours} placeholder="开放时间，如 09:00–17:30"
+                onChange={(e) => mutate((d) => { d.days[di].items[ai].visitHours = e.target.value; })} />
+              <input className="inp editable text-[12.5px]" value={a.closedDays} placeholder="闭馆日，如每周二"
+                onChange={(e) => mutate((d) => { d.days[di].items[ai].closedDays = e.target.value; })} />
+              <input className="inp editable text-[12.5px]" value={a.recommendedWeekdays} placeholder="建议星期，如周一至周四优先"
+                onChange={(e) => mutate((d) => { d.days[di].items[ai].recommendedWeekdays = e.target.value; })} />
+            </div>
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+              <input className="inp editable text-[12.5px]" value={a.duration} placeholder="建议停留时长，如约2小时"
+                onChange={(e) => mutate((d) => { d.days[di].items[ai].duration = e.target.value; })} />
+              <input className="inp editable text-[12.5px]" value={a.accessibility} placeholder="无障碍/行动不便提示"
+                onChange={(e) => mutate((d) => { d.days[di].items[ai].accessibility = e.target.value; })} />
+              <input className="inp editable text-[12.5px]" value={a.alternative} placeholder="备选方案，如不适合久走可改为…"
+                onChange={(e) => mutate((d) => { d.days[di].items[ai].alternative = e.target.value; })} />
+              <input className="inp editable text-[12.5px]" value={a.earlyExit} placeholder="提前离开选项"
+                onChange={(e) => mutate((d) => { d.days[di].items[ai].earlyExit = e.target.value; })} />
+            </div>
+            <LinkRows di={di} ai={ai} links={a.link} editUnlocked={editUnlocked} mutate={mutate} />
+          </div>
+        </>
+      ) : (
+        <>
+          {(a.visitHours || a.closedDays || a.recommendedWeekdays) && (
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 mt-2.5 pt-2.5 border-t border-dashed border-line">
+              {a.visitHours && <div className="rich-field"><span className="rich-label">开放时间</span><MarkdownText text={a.visitHours} /></div>}
+              {a.closedDays && <div className="rich-field"><span className="rich-label">闭馆日</span><MarkdownText text={a.closedDays} /></div>}
+              {a.recommendedWeekdays && <div className="rich-field"><span className="rich-label">建议星期</span><MarkdownText text={a.recommendedWeekdays} /></div>}
+            </div>
+          )}
+          {(a.duration || a.accessibility || a.alternative || a.earlyExit) && (
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 mt-2.5 pt-2.5 border-t border-dashed border-line">
+              {a.duration && <div className="rich-field"><span className="rich-label">建议时长</span><MarkdownText text={a.duration} /></div>}
+              {a.accessibility && <div className="rich-field"><span className="rich-label">无障碍提示</span><MarkdownText text={a.accessibility} /></div>}
+              {a.alternative && <div className="rich-field"><span className="rich-label">备选方案</span><MarkdownText text={a.alternative} /></div>}
+              {a.earlyExit && <div className="rich-field"><span className="rich-label">提前离开</span><MarkdownText text={a.earlyExit} /></div>}
+            </div>
+          )}
+          <LinkRows di={di} ai={ai} links={a.link} editUnlocked={editUnlocked} mutate={mutate} />
+        </>
       )}
-      {(editUnlocked || a.duration || a.accessibility || a.alternative || a.earlyExit) && (
-        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 mt-2.5 pt-2.5 border-t border-dashed border-line">
-          {editUnlocked ? (
-            <input className="inp editable text-[12.5px]" value={a.duration} placeholder="建议停留时长，如约2小时"
-              onChange={(e) => mutate((d) => { d.days[di].items[ai].duration = e.target.value; })} />
-          ) : a.duration ? (
-            <div className="rich-field"><span className="rich-label">建议时长</span><MarkdownText text={a.duration} /></div>
-          ) : null}
-          {editUnlocked ? (
-            <input className="inp editable text-[12.5px]" value={a.accessibility} placeholder="无障碍/行动不便提示"
-              onChange={(e) => mutate((d) => { d.days[di].items[ai].accessibility = e.target.value; })} />
-          ) : a.accessibility ? (
-            <div className="rich-field"><span className="rich-label">无障碍提示</span><MarkdownText text={a.accessibility} /></div>
-          ) : null}
-          {editUnlocked ? (
-            <input className="inp editable text-[12.5px]" value={a.alternative} placeholder="备选方案，如不适合久走可改为…"
-              onChange={(e) => mutate((d) => { d.days[di].items[ai].alternative = e.target.value; })} />
-          ) : a.alternative ? (
-            <div className="rich-field"><span className="rich-label">备选方案</span><MarkdownText text={a.alternative} /></div>
-          ) : null}
-          {editUnlocked ? (
-            <input className="inp editable text-[12.5px]" value={a.earlyExit} placeholder="提前离开选项"
-              onChange={(e) => mutate((d) => { d.days[di].items[ai].earlyExit = e.target.value; })} />
-          ) : a.earlyExit ? (
-            <div className="rich-field"><span className="rich-label">提前离开</span><MarkdownText text={a.earlyExit} /></div>
-          ) : null}
-        </div>
-      )}
-      <LinkRows di={di} ai={ai} links={a.link} editUnlocked={editUnlocked} mutate={mutate} />
     </div>
   );
 }

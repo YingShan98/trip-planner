@@ -1,4 +1,5 @@
 import type { Activity, BudgetItem, Day, Hotel, PackingItem, TransportItem, TripState } from './types';
+import { DEFAULT_TIME, isValidTimeOption } from './lib/activityTime';
 
 export const uid = (p: string) => p + '_' + Math.random().toString(36).slice(2, 8);
 
@@ -25,7 +26,7 @@ export function defaultDay(n: number): Day {
 }
 
 export function defaultActivity(): Activity {
-  return { t: '上午', x: '', place: '', move: '', fee: '', link: [], visitHours: '', closedDays: '', recommendedWeekdays: '', imageUrl: '', duration: '', accessibility: '', alternative: '', earlyExit: '' };
+  return { t: DEFAULT_TIME, x: '', place: '', move: '', fee: '', link: [], visitHours: '', closedDays: '', recommendedWeekdays: '', imageUrl: '', duration: '', accessibility: '', alternative: '', earlyExit: '' };
 }
 
 export function defaultHotel(): Hotel {
@@ -149,7 +150,12 @@ export function normalize(s: unknown): TripState {
           ...d,
           n: i + 1,
           items: Array.isArray(d.items)
-            ? d.items.map((a) => ({ ...defaultActivity(), ...a, link: Array.isArray(a.link) ? a.link : [] }))
+            ? d.items.map((a) => ({
+                ...defaultActivity(),
+                ...a,
+                t: isValidTimeOption(a.t) ? a.t : DEFAULT_TIME,
+                link: Array.isArray(a.link) ? a.link : [],
+              }))
             : [],
         }))
       : x.days;

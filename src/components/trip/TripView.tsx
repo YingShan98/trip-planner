@@ -9,8 +9,9 @@ import { downloadJSON } from '../../lib/download';
 import { createShare, deleteTrip, getTripRole, loadSharedTrip, loadTrip, saveSharedTrip, saveTrip, SaveConflictError, verifyEditPassword, type TripMeta } from '../../lib/tripApi';
 import { ensureGuestSession, getExistingGuestUser, getTripEditEvents, isAnonymousUser, setGuestName, type TripEditEvent } from '../../lib/guestAuth';
 import type { TripState } from '../../types';
-import { parseRate } from '../../lib/currency';
+import { convertAmount, formatMoney, parseRate } from '../../lib/currency';
 import Dashboard from './Dashboard';
+import CollapsibleSection from './CollapsibleSection';
 import Checklist from './Checklist';
 import DaysSection from './DaysSection';
 import HotelsSection from './HotelsSection';
@@ -38,6 +39,17 @@ const SECTIONS = [
   ['stay', '住宿'], ['currency', '汇率'], ['transport', '交通'], ['budget', '预算'], ['notes', '讨论'], ['attachments', '附件'],
 ] as const;
 
+/** Ids whose content is wrapped in a `<CollapsibleSection>`; overview/itinerary are always visible. */
+const COLLAPSIBLE_META: Record<string, { icon: string; title: string }> = {
+  prepare:     { icon: '☑️', title: '出发准备' },
+  stay:        { icon: '🏨', title: '酒店候选' },
+  currency:    { icon: '💱', title: '货币换算' },
+  transport:   { icon: '🚐', title: '交通参考' },
+  budget:      { icon: '💰', title: '预算' },
+  notes:       { icon: '💬', title: '留言板' },
+  attachments: { icon: '📎', title: '附件与资料' },
+};
+
 export default function TripView({
   slug, readOnly = false, shareToken, onHome, onDeleted,
 }: {
@@ -62,6 +74,7 @@ export default function TripView({
   const [hasUnsavedChanges, setHasUnsavedChanges] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
   const [activeSection, setActiveSection] = useState<string>(SECTIONS[0][0]);
+  const [openSections, setOpenSections] = useState<Record<string, boolean>>({});
   const [showPrintModal, setShowPrintModal] = useState(false);
   const [printSections, setPrintSections] = useState<PrintSections>(defaultPrintSections);
   const [printHotelFilter, setPrintHotelFilter] = useState<number | 'all'>('all');
@@ -371,6 +384,21 @@ export default function TripView({
     return () => observer.disconnect();
   }, [Boolean(currentTrip), Boolean(state)]);
 
+  /* Nav-pill click: open the target section (if it's collapsible) before scrolling, since a
+     collapsed section has zero height and would make a plain #id jump land in the wrong place.
+     Waits a frame for the expand to paint (mirrors the print flow's double-rAF below). */
+  const jumpToSection = (id: string) => {
+    if (id in COLLAPSIBLE_META) setOpenSections((prev) => ({ ...prev, [id]: true }));
+    requestAnimationFrame(() => requestAnimationFrame(() => {
+      const el = document.getElementById(id);
+      const nav = document.querySelector<HTMLElement>('.trip-nav');
+      if (!el) return;
+      const offset = (nav?.getBoundingClientRect().bottom ?? 68) + 12;
+      const top = el.getBoundingClientRect().top + window.scrollY - offset;
+      window.scrollTo({ top, behavior: 'smooth' });
+    }));
+  };
+
   useEffect(() => {
     const warnBeforeLeave = (event: BeforeUnloadEvent) => {
       if (!hasUnsavedChanges) return;
@@ -434,6 +462,27 @@ export default function TripView({
 
   const total = state.days.reduce((a, d) => a + d.items.length, 0);
   const done  = state.checklist.filter((x) => x.done).length;
+
+  /* One-line summaries shown on each collapsed accordion header. */
+  const homeCurrency = currentTrip.home_currency || 'MYR';
+  const foreignCurrency = state.foreignCurrency || '外币';
+  const exchangeRateValue = parseRate(state.exchangeRate);
+  let budgetTotalHome = 0;
+  for (const x of state.budget) {
+    const raw = (Number(x.quantity) || 0) * (Number(x.unitPrice) || 0);
+    const conv = convertAmount(raw, x.currency, exchangeRateValue);
+    if (conv.home !== null) budgetTotalHome += conv.home;
+  }
+  const sectionSummary: Record<string, string> = {
+    prepare: state.checklist.length ? `${done}/${state.checklist.length} 完成` : '暂无事项',
+    stay: state.hotels.length ? `${state.hotels.length} 个候选` : '暂无候选',
+    currency: exchangeRateValue ? `1 ${foreignCurrency} = ${exchangeRateValue} ${homeCurrency}` : '未设置汇率',
+    transport: state.transport.length ? `${state.transport.length} 个方案` : '暂无方案',
+    budget: state.budget.length ? `估算 ${formatMoney(budgetTotalHome, homeCurrency)}` : '暂无项目',
+    notes: state.notes.length ? `${state.notes.length} 条留言` : '暂无留言',
+    attachments: state.attachments.filter((a) => a.url.trim()).length
+      ? `${state.attachments.filter((a) => a.url.trim()).length} 个附件` : '暂无附件',
+  };
 
   return (
     <main className={`min-h-[calc(100vh-68px)] bg-bg${editUnlocked ? '' : ' readonly'}`}>
@@ -584,6 +633,7 @@ export default function TripView({
             <a
               key={id}
               href={`#${id}`}
+              onClick={(e) => { e.preventDefault(); jumpToSection(id); }}
               className={`px-3.5 py-3 text-[12.5px] font-semibold border-b-2 no-underline transition-colors ${
                 activeSection === id ? 'text-jade border-jade' : 'text-muted border-transparent hover:text-jade hover:border-jade'
               }`}
@@ -607,14 +657,36 @@ export default function TripView({
         </aside>
         <div className="min-w-0">
           <div id="overview" className={`scroll-mt-32${printSections.overview ? '' : ' print-hide'}`}><Dashboard state={state} description={currentTrip.description} total={total} done={done} startDate={currentTrip.start_date} endDate={currentTrip.end_date} weather={weather} /></div>
-          <div id="prepare" className={`scroll-mt-32${printSections.prepare ? '' : ' print-hide'}`}><Checklist state={state} editUnlocked={editUnlocked} mutate={mutate} canCheck={canCheck} onToggle={toggleCheck} /></div>
+
+          <CollapsibleSection id="prepare" icon={COLLAPSIBLE_META.prepare.icon} title={COLLAPSIBLE_META.prepare.title} summary={sectionSummary.prepare} printVisible={printSections.prepare} open={Boolean(openSections.prepare)} onToggle={() => setOpenSections((p) => ({ ...p, prepare: !p.prepare }))}>
+            <Checklist state={state} editUnlocked={editUnlocked} mutate={mutate} canCheck={canCheck} onToggle={toggleCheck} />
+          </CollapsibleSection>
+
           <div id="itinerary" className={`scroll-mt-32${printSections.itinerary ? '' : ' print-hide'}`}><DaysSection state={state} editUnlocked={editUnlocked} mutate={mutate} mutateNoSave={mutateNoSave} startDate={currentTrip.start_date} weather={weather} authorName={myPresenceName} showDiscussionInPrint={printSections.notes} /></div>
-          <div id="stay" className={`scroll-mt-32${printSections.stay ? '' : ' print-hide'}`}><HotelsSection state={state} editUnlocked={editUnlocked} mutate={mutate} authorName={myPresenceName} printOnlyIndex={printHotelFilter === 'all' ? null : printHotelFilter} showDiscussionInPrint={printSections.notes} /></div>
-          <div id="currency" className={`scroll-mt-32${printSections.currency ? '' : ' print-hide'}`}><CurrencySection state={state} homeCurrency={currentTrip.home_currency} mutate={mutate} /></div>
-          <div id="transport" className={`scroll-mt-32${printSections.transport ? '' : ' print-hide'}`}><TransportSection state={state} editUnlocked={editUnlocked} mutate={mutate} homeCurrency={currentTrip.home_currency} printOnlyIndex={printTransportFilter === 'all' ? null : printTransportFilter} /></div>
-          <div id="budget" className={`scroll-mt-32${printSections.budget ? '' : ' print-hide'}`}><BudgetSection state={state} editUnlocked={editUnlocked} mutate={mutate} currency={currentTrip.home_currency} /></div>
-          <div id="notes" className={`scroll-mt-32${printSections.notes ? '' : ' print-hide'}`}><NotesSection state={state} editUnlocked={editUnlocked} mutate={mutate} authorName={myPresenceName} /></div>
-          <div id="attachments" className={`scroll-mt-32${printSections.attachments ? '' : ' print-hide'}`}><AttachmentsSection state={state} editUnlocked={editUnlocked} mutate={mutate} /></div>
+
+          <CollapsibleSection id="stay" icon={COLLAPSIBLE_META.stay.icon} title={COLLAPSIBLE_META.stay.title} summary={sectionSummary.stay} printVisible={printSections.stay} open={Boolean(openSections.stay)} onToggle={() => setOpenSections((p) => ({ ...p, stay: !p.stay }))}>
+            <HotelsSection state={state} editUnlocked={editUnlocked} mutate={mutate} authorName={myPresenceName} printOnlyIndex={printHotelFilter === 'all' ? null : printHotelFilter} showDiscussionInPrint={printSections.notes} />
+          </CollapsibleSection>
+
+          <CollapsibleSection id="currency" icon={COLLAPSIBLE_META.currency.icon} title={COLLAPSIBLE_META.currency.title} summary={sectionSummary.currency} printVisible={printSections.currency} open={Boolean(openSections.currency)} onToggle={() => setOpenSections((p) => ({ ...p, currency: !p.currency }))}>
+            <CurrencySection state={state} homeCurrency={currentTrip.home_currency} mutate={mutate} />
+          </CollapsibleSection>
+
+          <CollapsibleSection id="transport" icon={COLLAPSIBLE_META.transport.icon} title={COLLAPSIBLE_META.transport.title} summary={sectionSummary.transport} printVisible={printSections.transport} open={Boolean(openSections.transport)} onToggle={() => setOpenSections((p) => ({ ...p, transport: !p.transport }))}>
+            <TransportSection state={state} editUnlocked={editUnlocked} mutate={mutate} homeCurrency={currentTrip.home_currency} printOnlyIndex={printTransportFilter === 'all' ? null : printTransportFilter} />
+          </CollapsibleSection>
+
+          <CollapsibleSection id="budget" icon={COLLAPSIBLE_META.budget.icon} title={COLLAPSIBLE_META.budget.title} summary={sectionSummary.budget} printVisible={printSections.budget} open={Boolean(openSections.budget)} onToggle={() => setOpenSections((p) => ({ ...p, budget: !p.budget }))}>
+            <BudgetSection state={state} editUnlocked={editUnlocked} mutate={mutate} currency={currentTrip.home_currency} />
+          </CollapsibleSection>
+
+          <CollapsibleSection id="notes" icon={COLLAPSIBLE_META.notes.icon} title={COLLAPSIBLE_META.notes.title} summary={sectionSummary.notes} printVisible={printSections.notes} open={Boolean(openSections.notes)} onToggle={() => setOpenSections((p) => ({ ...p, notes: !p.notes }))}>
+            <NotesSection state={state} editUnlocked={editUnlocked} mutate={mutate} authorName={myPresenceName} />
+          </CollapsibleSection>
+
+          <CollapsibleSection id="attachments" icon={COLLAPSIBLE_META.attachments.icon} title={COLLAPSIBLE_META.attachments.title} summary={sectionSummary.attachments} printVisible={printSections.attachments} open={Boolean(openSections.attachments)} onToggle={() => setOpenSections((p) => ({ ...p, attachments: !p.attachments }))}>
+            <AttachmentsSection state={state} editUnlocked={editUnlocked} mutate={mutate} />
+          </CollapsibleSection>
         </div>
       </div>
 

@@ -12,25 +12,17 @@ export default function BudgetSection({
   const foreign = state.foreignCurrency || '外币';
   const rate    = parseRate(state.exchangeRate);
 
-  let totalHome = 0, unconverted = 0;
+  let unconverted = 0;
   for (const x of state.budget) {
     const raw  = (Number(x.quantity) || 0) * (Number(x.unitPrice) || 0);
     const conv = convertAmount(raw, x.currency, rate);
-    if (conv.home !== null) totalHome += conv.home;
-    else unconverted++;
+    if (conv.home === null) unconverted++;
   }
-  const totalForeign = rate !== null ? totalHome / rate : null;
-
   return (
-    <section className="py-7 border-b border-line">
-      <div className="flex justify-between items-center gap-2.5 pb-3.5 mb-4 border-b-2 border-line flex-wrap">
-        <h2 className="font-serif text-[19px] font-bold text-jade-dark">💰 预算</h2>
-        <span className="text-muted text-[13px]">
-          {home} · 估算总额 {formatMoney(totalHome, '')}
-          {totalForeign !== null ? ` ≈ ${formatMoney(totalForeign, foreign)}` : ''}
-          {unconverted > 0 ? ` · ${unconverted} 项未换算（请设置汇率）` : ''}
-        </span>
-      </div>
+    <>
+      {unconverted > 0 && (
+        <p className="text-muted text-[12.5px] mb-3.5">{unconverted} 项未换算（请设置汇率）</p>
+      )}
 
       {state.budget.length === 0 ? (
         <div className="hidden sm:block empty-state">还没有预算项目</div>
@@ -146,6 +138,6 @@ export default function BudgetSection({
           ＋ 添加预算项目
         </button>
       )}
-    </section>
+    </>
   );
 }

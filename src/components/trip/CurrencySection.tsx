@@ -11,12 +11,8 @@ export default function CurrencySection({
   const rate    = parseRate(state.exchangeRate);
 
   return (
-    <section className="py-7 border-b border-line">
-      <div className="flex justify-between items-center gap-2.5 pb-3.5 mb-4 border-b-2 border-line flex-wrap">
-        <h2 className="font-serif text-[19px] font-bold text-jade-dark">💱 货币换算</h2>
-        <span className="text-muted text-[13px]">本地货币在「旅行设置」中修改</span>
-      </div>
-
+    <>
+      <p className="text-muted text-[12.5px] mb-3.5">本地货币在「旅行设置」中修改</p>
       <div className="flex flex-wrap gap-4">
         <div className="field min-w-[160px]">
           <label>本地货币（家乡）</label>
@@ -50,6 +46,6 @@ export default function CurrencySection({
           设置汇率后，交通与预算项目可自动换算显示 {home} / {foreign} 双币金额。
         </p>
       )}
-    </section>
+    </>
   );
 }
