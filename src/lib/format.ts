@@ -11,11 +11,20 @@ export function dateRange(t: { start_date?: string | null; end_date?: string | n
 
 const WEEKDAY_LABELS = ['日', '一', '二', '三', '四', '五', '六'];
 
+/** Formats a Date by its LOCAL calendar fields, not `toISOString()` — which reports the UTC
+ *  date and silently shifts a day backward for anyone east of UTC (e.g. UTC+8 Malaysia/KL). */
+export function toLocalIsoDate(d: Date): string {
+  const y = d.getFullYear();
+  const m = String(d.getMonth() + 1).padStart(2, '0');
+  const day = String(d.getDate()).padStart(2, '0');
+  return `${y}-${m}-${day}`;
+}
+
 /** Adds `days` (may be negative) to an ISO date string, returning an ISO date string. */
 export function addDays(isoDate: string, days: number): string {
   const d = new Date(isoDate + 'T00:00:00');
   d.setDate(d.getDate() + days);
-  return d.toISOString().slice(0, 10);
+  return toLocalIsoDate(d);
 }
 
 /** The calendar date for day index `dayIndex` (0-based) of a trip starting on `startDate`, or null if unset. */
