@@ -11,6 +11,8 @@ export type CurrencyKey = 'home' | 'foreign';
 export interface Activity {
   t: string;
   x: string;
+  /** Searchable place name or address, e.g. "广东省博物馆". Drives the map/directions links; `x` is free prose. */
+  place: string;
   move: string;
   fee: string;
   link: LinkItem[];

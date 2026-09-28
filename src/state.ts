@@ -25,7 +25,7 @@ export function defaultDay(n: number): Day {
 }
 
 export function defaultActivity(): Activity {
-  return { t: '上午', x: '', move: '', fee: '', link: [], visitHours: '', closedDays: '', recommendedWeekdays: '', imageUrl: '', duration: '', accessibility: '', alternative: '', earlyExit: '' };
+  return { t: '上午', x: '', place: '', move: '', fee: '', link: [], visitHours: '', closedDays: '', recommendedWeekdays: '', imageUrl: '', duration: '', accessibility: '', alternative: '', earlyExit: '' };
 }
 
 export function defaultHotel(): Hotel {
@@ -53,6 +53,7 @@ export function templateState(): TripState {
           {
             t: '上午',
             x: '示例：广州塔观景台',
+            place: '广州塔',
             move: '示例：地铁 3 号线',
             fee: '示例：RM 50/人',
             link: [{ label: '官网', url: 'https://example.com' }],

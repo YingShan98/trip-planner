@@ -75,11 +75,15 @@
    ═══════════════════════════════════════════════════════════ */
 @layer base {
   *, *::before, *::after { box-sizing: border-box; }
-  html { scroll-behavior: smooth; -webkit-text-size-adjust: 100%; overflow-x: hidden; }
+  /* `clip`, not `hidden`: hidden on both html and body turns body into a scroll container, which
+     silently breaks every `position: sticky` (trip nav, day pill bar). `hidden` stays as the
+     fallback for browsers without `clip`. */
+  html { scroll-behavior: smooth; -webkit-text-size-adjust: 100%; overflow-x: hidden; overflow-x: clip; }
 
   body {
     margin: 0;
     overflow-x: hidden;
+    overflow-x: clip;
     background-color: var(--color-bg);
     color: var(--color-ink);
     font-family: var(--font-sans);
@@ -245,6 +249,13 @@
 .trip-sidebar a:hover { color: var(--color-jade); border-left-color: var(--color-jade); background: var(--color-jade-light); }
 @media (max-width: 900px) { .trip-layout { display: block; } .trip-sidebar { display: none; } }
 
+/* Itinerary: `#day-N` anchors land below the sticky header + trip nav + day pill bar; legs draw the dotted route line. */
+.day-card { scroll-margin-top: 180px; }
+.itinerary-leg { position: relative; }
+.itinerary-leg::before { content: ''; position: absolute; left: 25px; top: 0; bottom: 0; border-left: 2px dotted var(--color-line-strong); }
+.day-tabs { scrollbar-width: none; }
+.day-tabs::-webkit-scrollbar { display: none; }
+
 /* ═══════════════════════════════════════════════════════════
    Parent-child cascade rules (can't express as inline utilities)
    ═══════════════════════════════════════════════════════════ */
@@ -292,6 +303,10 @@
 
   /* Activity photos stay in the printout but shrink — a trip can have dozens of them. */
   .activity-image { height: 70px !important; }
+
+  /* On paper folded days and folded stop details are shown in full. */
+  .print-show { display: block !important; }
+  .print-unclamp { -webkit-line-clamp: unset !important; display: block !important; overflow: visible !important; }
 }
 
 /* ═══════════════════════════════════════════════════════════

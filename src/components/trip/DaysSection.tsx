@@ -1,8 +1,8 @@
-import { useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { defaultActivity, defaultDay } from '../../state';
 import type { Activity, Day, Intensity, Mutate, TripState } from '../../types';
 import { confirmDialog } from '../../lib/confirm';
-import { toMapEmbedSrc } from '../../lib/mapEmbed';
+import { amapSearchUrl, googleDirectionsUrl, googleMapsSearchUrl, toMapEmbedSrc, type TravelMode } from '../../lib/mapEmbed';
 import { dayDate, formatDateWithWeekday } from '../../lib/format';
 import { weatherEmoji, type WeatherResult } from '../../lib/weather';
 import MarkdownText from '../MarkdownText';
@@ -83,9 +83,19 @@ function ActivityRow({ a, di, ai, total, editUnlocked, mutate }: {
           </div>
         )}
       </div>
+      {editUnlocked && (
+        <div className="flex gap-2 items-center mb-2">
+          <input className="inp editable flex-1" value={a.place} placeholder="📍 地点名称或地址（用于地图/路线），如 广东省博物馆"
+            onChange={(e) => mutate((d) => { d.days[di].items[ai].place = e.target.value; })} />
+          {a.place.trim() && (
+            <a href={googleMapsSearchUrl(a.place)} target="_blank" rel="noopener noreferrer"
+              className="btn-mini edit-only shrink-0 no-underline hover:no-underline">核对位置 ↗</a>
+          )}
+        </div>
+      )}
       <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
         {editUnlocked ? (
-          <input className="inp editable" value={a.move} placeholder="交通"
+          <input className="inp editable" value={a.move} placeholder="交通（如何前往这一站）"
             onChange={(e) => mutate((d) => { d.days[di].items[ai].move = e.target.value; })} />
         ) : a.move ? (
           <div className="rich-field"><span className="rich-label">交通</span><MarkdownText text={a.move} /></div>
@@ -166,6 +176,165 @@ function ActivityRow({ a, di, ai, total, editUnlocked, mutate }: {
   );
 }
 
+/* `move` is free text that often mentions several modes ("地铁…或打车…"), so the icon follows
+   whichever keyword appears first rather than a fixed priority. */
+const TRANSIT_MODES: [RegExp, string, string, TravelMode?][] = [
+  [/步行|走路|walk/i, '🚶', '步行', 'walking'],
+  [/地铁|号线|APM|城际|metro|subway|MRT/i, '🚇', '地铁', 'transit'],
+  [/公交|巴士|快巴|bus/i, '🚌', '公交', 'transit'],
+  [/打车|包车|自驾|的士|出租|网约车|专车|接机|送机|taxi|grab|car/i, '🚗', '驾车', 'driving'],
+  [/船|渡轮|夜游|ferry|cruise|boat/i, '⛴️', '乘船', 'transit'],
+  [/航班|飞机|flight/i, '✈️', '航班'],
+  [/高铁|动车|(?:^|[^小])火车|train/i, '🚄', '火车', 'transit'],
+];
+
+function transitMode(text: string): { icon: string; label: string; travelMode?: TravelMode } {
+  let best: { icon: string; label: string; travelMode?: TravelMode; at: number } | null = null;
+  for (const [re, icon, label, travelMode] of TRANSIT_MODES) {
+    const at = text.search(re);
+    if (at >= 0 && (!best || at < best.at)) best = { icon, label, travelMode, at };
+  }
+  return best ?? { icon: '➜', label: '前往' };
+}
+
+/**
+ * Leg leading to a stop: its `move` text, plus a Google Maps directions link when the stop has a
+ * `place` (from the previous stop's place, or from the viewer's location for the day's first stop).
+ */
+function TransitConnector({ text, first, to, from }: { text: string; first: boolean; to: string; from: string }) {
+  const [open, setOpen] = useState(false);
+  const mode = transitMode(text);
+  const long = text.length > 36 || text.includes('\n');
+  const directions = to.trim() ? googleDirectionsUrl(to, from, mode.travelMode) : null;
+  return (
+    <div className="itinerary-leg flex items-start gap-2.5 py-2 pl-[26px] text-[12.5px] text-muted">
+      <span className="shrink-0 -ml-[15px] w-[30px] h-[30px] rounded-full bg-surface border border-line flex items-center justify-center text-[14px] relative z-[1]"
+        role="img" aria-label={mode.label}>{mode.icon}</span>
+      <div className="min-w-0 flex-1 pt-[5px]">
+        {text && (
+          <div className={open || !long ? '' : 'line-clamp-1 print-unclamp'}>
+            {first && <span className="font-semibold text-ink-2">出发 · </span>}
+            <MarkdownText text={text} className="inline !text-[12.5px] !text-muted !leading-relaxed [&>p]:inline" />
+          </div>
+        )}
+        {(long || directions) && (
+          <div className="no-print flex flex-wrap gap-x-3 mt-0.5 text-[12px] font-medium">
+            {long && (
+              <button className="text-jade hover:underline" aria-expanded={open} onClick={() => setOpen((v) => !v)}>
+                {open ? '收起' : '展开交通详情'}
+              </button>
+            )}
+            {directions && (
+              <a href={directions} target="_blank" rel="noopener noreferrer" className="text-jade hover:underline"
+                title={from.trim() ? `${from.trim()} → ${to.trim()}` : `从当前位置前往 ${to.trim()}`}>
+                🧭 路线{from.trim() ? '' : '（从当前位置）'} ↗
+              </a>
+            )}
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
+/** Read-only stop card: thumbnail + number, title, and the at-a-glance facts; the rest folds away. */
+function ItineraryStop({ a, index }: { a: Activity; index: number }) {
+  const [open, setOpen] = useState(false);
+  const [imgFailed, setImgFailed] = useState(false);
+  const links = a.link.filter((l) => l.url.trim());
+  const extras: [string, string, boolean?][] = [
+    ['闭馆日', a.closedDays, true],
+    ['建议星期', a.recommendedWeekdays],
+    ['无障碍提示', a.accessibility],
+    ['备选方案', a.alternative],
+    ['提前离开', a.earlyExit],
+  ];
+  const shownExtras = extras.filter(([, v]) => v.trim());
+  const hasMore = shownExtras.length > 0 || links.length > 0;
+  const showImage = Boolean(a.imageUrl) && !imgFailed;
+
+  return (
+    <div className="relative z-[1] bg-surface border border-line rounded p-3 shadow-xs transition-all duration-150 hover:border-line-strong hover:shadow-sm print-keep">
+      <div className="flex gap-3">
+        <div className="relative shrink-0 w-[84px] h-[84px] sm:w-[104px] sm:h-[104px] rounded-sm overflow-hidden border border-line bg-jade-light">
+          {showImage ? (
+            <img key={a.imageUrl} src={a.imageUrl} alt="" loading="lazy"
+              className="activity-image w-full h-full object-cover" onError={() => setImgFailed(true)} />
+          ) : (
+            <div className="w-full h-full flex flex-col items-center justify-center text-jade">
+              <span className="font-serif font-bold text-[28px] leading-none">{index + 1}</span>
+              {a.t && <span className="text-[11px] mt-1 font-semibold">{a.t}</span>}
+            </div>
+          )}
+          {showImage && (
+            <span className="absolute top-1 left-1 min-w-[22px] h-[22px] px-1 rounded-full bg-jade-dark text-white text-[11.5px] font-bold flex items-center justify-center">
+              {index + 1}
+            </span>
+          )}
+        </div>
+        <div className="min-w-0 flex-1">
+          <div className="flex items-start gap-2">
+            <div className="min-w-0 flex-1 line-clamp-3 print-unclamp">
+              {a.x.trim()
+                ? <MarkdownText text={a.x} className="!font-bold !text-ink !text-[14.5px] !leading-snug" />
+                : <span className="text-muted">未命名行程</span>}
+            </div>
+            {a.t && showImage && <span className="pill shrink-0 !py-0.5 !text-[11.5px]">{a.t}</span>}
+          </div>
+          {a.place.trim() && (
+            <div className="mt-1 flex flex-wrap items-baseline gap-x-2 text-[12px]">
+              <span className="text-ink-2 min-w-0">📍 {a.place.trim()}</span>
+              <span className="no-print flex gap-2">
+                <a href={googleMapsSearchUrl(a.place)} target="_blank" rel="noopener noreferrer" className="text-jade hover:underline">Google 地图 ↗</a>
+                <a href={amapSearchUrl(a.place)} target="_blank" rel="noopener noreferrer" className="text-jade hover:underline">高德 ↗</a>
+              </span>
+            </div>
+          )}
+          <dl className="mt-1.5 space-y-0.5 text-[12.5px] text-ink-2">
+            {([
+              ['建议游玩', a.duration, ''],
+              ['开放', a.visitHours, ''],
+              ['闭馆', a.closedDays, '!text-danger'],
+              ['费用', a.fee, '!font-semibold !text-jade-dark'],
+            ] as const).filter(([, v]) => v.trim()).map(([label, v, tone]) => (
+              <div key={label} className="flex gap-1.5">
+                <dt className={`shrink-0 ${label === '闭馆' ? 'text-danger' : 'text-muted'}`}>{label}</dt>
+                <dd className="min-w-0 m-0"><MarkdownText text={v} className={`!text-[12.5px] !leading-normal ${tone}`} /></dd>
+              </div>
+            ))}
+          </dl>
+        </div>
+      </div>
+      {hasMore && (
+        <>
+          <button className="no-print mt-2 text-jade text-[12.5px] font-medium hover:underline" aria-expanded={open}
+            onClick={() => setOpen((v) => !v)}>
+            {open ? '收起详情 ▴' : `更多详情${links.length ? ` · ${links.length} 个链接` : ''} ▾`}
+          </button>
+          <div className={`${open ? '' : 'hidden'} print-show mt-2.5 pt-2.5 border-t border-dashed border-line`}>
+            {shownExtras.filter(([label]) => label !== '闭馆日').length > 0 && (
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
+                {shownExtras.filter(([label]) => label !== '闭馆日').map(([label, v]) => (
+                  <div key={label} className="rich-field"><span className="rich-label">{label}</span><MarkdownText text={v} /></div>
+                ))}
+              </div>
+            )}
+            {links.length > 0 && (
+              <div className="flex flex-wrap gap-x-4 gap-y-1.5 mt-2.5">
+                {links.map((l, li) => (
+                  <a key={li} href={l.url} target="_blank" rel="noopener noreferrer" className="text-jade text-[12.5px] hover:underline">
+                    ↗ {l.label || l.url}
+                  </a>
+                ))}
+              </div>
+            )}
+          </div>
+        </>
+      )}
+    </div>
+  );
+}
+
 function DayCard({ d, i, total, collapsed, editUnlocked, mutate, mutateNoSave, date, dayWeather, state, authorName, showDiscussionInPrint }: {
   d: Day; i: number; total: number; collapsed: boolean;
   editUnlocked: boolean; mutate: Mutate; mutateNoSave: Mutate;
@@ -189,7 +358,7 @@ function DayCard({ d, i, total, collapsed, editUnlocked, mutate, mutateNoSave, d
   };
 
   return (
-    <article id={`day-${i + 1}`} className="bg-surface border border-line rounded-lg overflow-hidden mb-3.5 shadow-xs transition-shadow duration-150 hover:shadow-sm scroll-mt-32">
+    <article id={`day-${i + 1}`} data-day-index={i} className="day-card bg-surface border border-line rounded-lg overflow-hidden mb-3.5 shadow-xs">
       {/* Day header */}
       <div className="flex items-center gap-2.5 px-4 py-3 bg-surface-3 border-b border-line flex-wrap print-head">
         <span className="bg-jade-dark text-white rounded-[5px] px-2.5 py-1 font-bold text-[11.5px] tracking-[0.06em] shrink-0">
@@ -218,9 +387,9 @@ function DayCard({ d, i, total, collapsed, editUnlocked, mutate, mutateNoSave, d
               🗺️ {showMap ? '收起地图' : '查看地图'}
             </button>
           )}
-          <button className="no-print btn-mini"
+          <button className="no-print btn-mini" aria-expanded={!collapsed}
             onClick={() => mutateNoSave((s) => { s.collapsed[i] = !s.collapsed[i]; })}>
-            {collapsed ? '展开' : '折叠'}
+            {collapsed ? '展开 ▾' : '折叠 ▴'}
           </button>
           {editUnlocked && (
             <>
@@ -278,9 +447,8 @@ function DayCard({ d, i, total, collapsed, editUnlocked, mutate, mutateNoSave, d
         </div>
       )}
 
-      {/* Day body */}
-      {!collapsed && (
-        <div className="p-4">
+      {/* Day body — folded days stay in the DOM (hidden on screen only) so they still print */}
+      <div className={`p-4${collapsed ? ' hidden print-show' : ''}`}>
           <div className="flex gap-2 flex-wrap mb-3.5">
             {editUnlocked ? (
               <select className="inp editable w-full sm:w-auto" value={d.intensity}
@@ -304,9 +472,20 @@ function DayCard({ d, i, total, collapsed, editUnlocked, mutate, mutateNoSave, d
             ) : null}
           </div>
 
-          {d.items.map((a, j) => (
+          {editUnlocked ? d.items.map((a, j) => (
             <ActivityRow key={j} a={a} di={i} ai={j} total={d.items.length} editUnlocked={editUnlocked} mutate={mutate} />
-          ))}
+          )) : d.items.length ? (
+            <ol className="itinerary-timeline list-none m-0 p-0">
+              {d.items.map((a, j) => (
+                <li key={j}>
+                  {a.move.trim() || a.place.trim()
+                    ? <TransitConnector text={a.move.trim()} first={j === 0} to={a.place} from={j > 0 ? d.items[j - 1].place : ''} />
+                    : j > 0 && <div className="h-3" aria-hidden="true" />}
+                  <ItineraryStop key={a.imageUrl} a={a} index={j} />
+                </li>
+              ))}
+            </ol>
+          ) : <p className="text-muted text-[13px] text-center py-4">这一天还没有安排行程</p>}
 
           {editUnlocked && (
             <button className="add-btn edit-only"
@@ -328,35 +507,170 @@ function DayCard({ d, i, total, collapsed, editUnlocked, mutate, mutateNoSave, d
           ) : null}
 
           <CommentThread state={state} editUnlocked={editUnlocked} mutate={mutate} targetType="day" targetIndex={i} authorName={authorName} printVisible={showDiscussionInPrint} />
-        </div>
-      )}
+      </div>
     </article>
   );
 }
 
+/** One row of the 行程总览 list: the day at a glance, with its stops as a numbered list. Click to jump to the day. */
+function DayOverviewRow({ d, i, date, dayWeather, onOpen }: {
+  d: Day; i: number; date: string | null;
+  dayWeather?: { tMax: number; tMin: number; code: number };
+  onOpen: () => void;
+}) {
+  return (
+    <button onClick={onOpen}
+      className="w-full text-left bg-surface border border-line rounded p-3.5 mb-2.5 shadow-xs transition-all duration-150 hover:border-jade hover:shadow-sm">
+      <div className="flex items-center gap-2 flex-wrap">
+        <span className="bg-jade-dark text-white rounded-[5px] px-2 py-0.5 font-bold text-[11.5px] tracking-[0.06em] shrink-0">D{i + 1}</span>
+        {date && (
+          <span className="text-muted text-[12px] font-semibold">
+            {formatDateWithWeekday(date)}
+            {dayWeather && <> <span aria-hidden="true">{weatherEmoji(dayWeather.code)}</span> {dayWeather.tMax}°/{dayWeather.tMin}°</>}
+          </span>
+        )}
+        <span className={`pill border !py-0.5 ml-auto ${intensityClass(d.intensity)}`}>{intensityLabel(d.intensity)}</span>
+      </div>
+      <h3 className="font-serif font-bold text-[15.5px] text-ink mt-1.5">{d.title || `Day ${i + 1}`}</h3>
+      {d.items.length > 0 && (
+        <ol className="list-none m-0 p-0 mt-1.5 space-y-0.5">
+          {d.items.map((a, j) => (
+            <li key={j} className="flex gap-2 text-[12.5px] text-ink-2 min-w-0">
+              <span className="shrink-0 w-[18px] h-[18px] mt-[2px] rounded-full bg-jade-light text-jade text-[10.5px] font-bold flex items-center justify-center">{j + 1}</span>
+              {a.t && <span className="shrink-0 text-muted">{a.t}</span>}
+              <span className="min-w-0 truncate">{a.x.replace(/\*\*/g, '')}</span>
+            </li>
+          ))}
+        </ol>
+      )}
+      <span className="block text-jade text-[12.5px] font-medium mt-2">查看当天行程 →</span>
+    </button>
+  );
+}
+
+/**
+ * Day-by-day itinerary, all days stacked for continuous scrolling. The sticky pill bar
+ * (总览 + one pill per day) jumps to a day on click and follows the scroll position
+ * (scroll-spy), trip.com-style.
+ */
 export default function DaysSection({
-  state, editUnlocked, mutate, mutateNoSave, startDate, weather, authorName, onCollapseAll, showDiscussionInPrint = true,
+  state, editUnlocked, mutate, mutateNoSave, startDate, weather, authorName, showDiscussionInPrint = true,
 }: {
   state: TripState; editUnlocked: boolean; mutate: Mutate; mutateNoSave: Mutate;
-  startDate: string | null; weather: WeatherResult | 'loading' | null; authorName: string; onCollapseAll: () => void;
+  startDate: string | null; weather: WeatherResult | 'loading' | null; authorName: string;
   showDiscussionInPrint?: boolean;
 }) {
   const weatherByDate = weather && weather !== 'loading' && weather.status === 'ok'
     ? new Map(weather.days.map((w) => [w.date, w]))
     : null;
+  /** Day whose card sits under the pill bar; null while the overview (above Day 1) is in view. */
+  const [active, setActive] = useState<number | null>(null);
+  const [overviewOpen, setOverviewOpen] = useState(true);
+  const tabsRef = useRef<HTMLDivElement>(null);
+  /** Suppresses scroll-spy while a pill-click smooth scroll passes over the days in between. */
+  const spyLockUntil = useRef(0);
+  const dayCount = state.days.length;
+
+  useEffect(() => {
+    let frame = 0;
+    const recompute = () => {
+      frame = 0;
+      if (Date.now() < spyLockUntil.current) return;
+      const line = (tabsRef.current?.getBoundingClientRect().bottom ?? 0) + 12;
+      let current: number | null = null;
+      document.querySelectorAll<HTMLElement>('.day-card').forEach((el) => {
+        if (el.getBoundingClientRect().top <= line) current = Number(el.dataset.dayIndex);
+      });
+      setActive(current);
+    };
+    const onScroll = () => { if (!frame) frame = requestAnimationFrame(recompute); };
+    window.addEventListener('scroll', onScroll, { passive: true });
+    window.addEventListener('resize', onScroll);
+    recompute();
+    return () => {
+      window.removeEventListener('scroll', onScroll);
+      window.removeEventListener('resize', onScroll);
+      if (frame) cancelAnimationFrame(frame);
+    };
+  }, [dayCount]);
+
+  /* Keep the active pill centred in the horizontally scrolling bar. */
+  useEffect(() => {
+    const bar = tabsRef.current;
+    const pill = bar?.querySelector<HTMLElement>('[aria-selected="true"]');
+    if (!bar || !pill) return;
+    bar.scrollTo({ left: pill.offsetLeft - bar.clientWidth / 2 + pill.offsetWidth / 2, behavior: 'smooth' });
+  }, [active]);
+
+  const jumpTo = (i: number | null) => {
+    const target = document.getElementById(i === null ? 'itinerary' : `day-${i + 1}`);
+    if (!target) return;
+    const barHeight = tabsRef.current?.getBoundingClientRect().height ?? 0;
+    const top = target.getBoundingClientRect().top + window.scrollY - (i === null ? 115 : 115 + barHeight + 4);
+    setActive(i);
+    spyLockUntil.current = Date.now() + 900;
+    window.scrollTo({ top, behavior: 'smooth' });
+  };
+
+  const setAllCollapsed = (value: boolean) =>
+    mutateNoSave((s) => { s.days.forEach((_, i) => { s.collapsed[i] = value; }); });
+  const allCollapsed = dayCount > 0 && state.days.every((_, i) => state.collapsed[i]);
+
+  const tabClass = (on: boolean) =>
+    `shrink-0 flex flex-col items-center justify-center min-w-[64px] px-3.5 py-1.5 rounded-full border-[1.5px] text-[13px] font-semibold leading-tight transition-colors ${
+      on ? 'bg-jade-dark border-jade-dark text-white' : 'bg-surface border-line text-ink-2 hover:border-jade hover:text-jade'
+    }`;
 
   return (
     <section className="py-7 border-b border-line">
       <div className="flex justify-between items-center gap-2.5 pb-3.5 mb-4 border-b-2 border-line flex-wrap">
         <h2 className="font-serif text-[19px] font-bold text-jade-dark">🗓️ 行程</h2>
-        <div className="flex items-center gap-2"><span className="text-muted text-[13px] hidden sm:inline">任意天数 · 可自由调整顺序</span><button className="btn-mini" onClick={onCollapseAll}>全部折叠</button></div>
+        <div className="flex items-center gap-2">
+          <span className="text-muted text-[13px] hidden sm:inline">{dayCount} 天 · 任意天数 · 可自由调整顺序</span>
+          {dayCount > 0 && (
+            <button className="btn-mini no-print" onClick={() => setAllCollapsed(!allCollapsed)}>
+              {allCollapsed ? '全部展开' : '全部折叠'}
+            </button>
+          )}
+        </div>
       </div>
+
+      {dayCount > 0 && (
+        <div ref={tabsRef} role="tablist" aria-label="跳到某一天"
+          className="day-tabs no-print sticky top-[115px] z-30 -mx-1 px-1 py-2 mb-3 flex gap-2 overflow-x-auto bg-bg/95 backdrop-blur-md">
+          <button role="tab" aria-selected={active === null} className={tabClass(active === null)} onClick={() => jumpTo(null)}>
+            ☰ 总览
+          </button>
+          {state.days.map((_, i) => {
+            const date = dayDate(startDate, i);
+            return (
+              <button key={i} role="tab" aria-selected={active === i} className={tabClass(active === i)} onClick={() => jumpTo(i)}>
+                <span>Day {i + 1}</span>
+                {date && <span className={`text-[10.5px] font-medium ${active === i ? 'text-white/80' : 'text-muted'}`}>{formatDateWithWeekday(date)}</span>}
+              </button>
+            );
+          })}
+        </div>
+      )}
+
+      {dayCount > 0 && (
+        <div className="no-print mb-4">
+          <button className="flex items-center gap-1.5 text-[13px] font-semibold text-ink-2 mb-2 hover:text-jade" aria-expanded={overviewOpen}
+            onClick={() => setOverviewOpen((v) => !v)}>
+            ☰ 行程总览 <span className="text-muted font-normal">{overviewOpen ? '▴ 收起' : '▾ 展开'}</span>
+          </button>
+          {overviewOpen && state.days.map((d, i) => {
+            const date = dayDate(startDate, i);
+            return <DayOverviewRow key={i} d={d} i={i} date={date} dayWeather={date ? weatherByDate?.get(date) : undefined} onOpen={() => jumpTo(i)} />;
+          })}
+        </div>
+      )}
 
       {state.days.map((d, i) => {
         const date = dayDate(startDate, i);
         return (
           <DayCard
-            key={i} d={d} i={i} total={state.days.length}
+            key={i} d={d} i={i} total={dayCount}
             collapsed={Boolean(state.collapsed[i])}
             editUnlocked={editUnlocked} mutate={mutate} mutateNoSave={mutateNoSave}
             date={date} dayWeather={date ? weatherByDate?.get(date) : undefined}
@@ -371,6 +685,7 @@ export default function DaysSection({
           ＋ 添加 Day
         </button>
       )}
+      {state.days.length === 0 && !editUnlocked && <div className="empty-state">还没有安排 Day</div>}
     </section>
   );
 }

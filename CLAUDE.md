@@ -32,7 +32,7 @@ Row-level metadata (title, destination, dates, `home_currency`) lives on `TripMe
 `TripView` owns the single `state: TripState` and passes two callbacks down to every section component:
 
 - `mutate(fn)` — clones state via `structuredClone`, applies `fn`, sets state, and marks `hasUnsavedChanges`. The actual save is manual: the edit-mode FAB calls `saveRemote()`, which sends the trip's `content_version` to `tripApi.ts:saveTrip()`/`saveSharedTrip()` as an optimistic-concurrency token and prompts to overwrite-or-cancel if `save_trip_workspace` reports a conflict (someone else saved first).
-- `mutateNoSave(fn)` — same clone-and-set but no save (used for UI-only state like collapsed sections).
+- `mutateNoSave(fn)` — same clone-and-set but no save (used for UI-only state like collapsed days).
 
 Section components receive `{ state, editUnlocked, mutate, mutateNoSave? }` and never hold their own copies of trip data.
 

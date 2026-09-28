@@ -85,6 +85,7 @@ export async function loadTrip(slug: string): Promise<TripWorkspace> {
     items: activities.filter((activity) => activity.day_id === day.id).map((activity) => ({
       t: String(activity.time_label || ''),
       x: String(activity.title || ''),
+      place: String(activity.place || ''),
       move: String(activity.transport_note || ''),
       fee: String(activity.fee_note || ''),
       link: activityLinks.filter((link) => link.activity_id === activity.id).map((link) => ({ label: String(link.label || ''), url: String(link.url || '') })),

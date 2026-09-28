@@ -23,3 +23,23 @@ export function toMapEmbedSrc(input: string): string | null {
 
   return null;
 }
+
+export type TravelMode = 'walking' | 'transit' | 'driving';
+
+/** Google Maps place search — works worldwide, needs no key. */
+export function googleMapsSearchUrl(place: string): string {
+  return `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(place.trim())}`;
+}
+
+/** 高德 (Amap) keyword search — the usable map inside mainland China, needs no key. */
+export function amapSearchUrl(place: string): string {
+  return `https://uri.amap.com/search?keyword=${encodeURIComponent(place.trim())}&view=map&src=trip-planner&callnative=1`;
+}
+
+/** Google Maps directions between two place names; without `from` it starts at the viewer's current location. */
+export function googleDirectionsUrl(to: string, from?: string, mode?: TravelMode): string {
+  const params = new URLSearchParams({ api: '1', destination: to.trim() });
+  if (from?.trim()) params.set('origin', from.trim());
+  if (mode) params.set('travelmode', mode);
+  return `https://www.google.com/maps/dir/?${params}`;
+}

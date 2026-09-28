@@ -403,12 +403,10 @@ export default function TripView({
     setShowPrintModal(true);
   };
 
-  /* Days collapsed on-screen aren't rendered at all, so printing right after a collapse would
-     silently omit their content — expand everything first, then wait for the browser to actually
-     paint the section/hotel/transport filters (already applied via React state at this point)
-     before printing, rather than guessing with a fixed timeout. */
+  /* Wait for the browser to actually paint the section/hotel/transport filters (already applied
+     via React state at this point) before printing, rather than guessing with a fixed timeout.
+     Folded days stay in the DOM (hidden on screen only), so they print without unfolding. */
   const confirmPrint = () => {
-    mutateNoSave((s) => { s.days.forEach((_, i) => { s.collapsed[i] = false; }); });
     setShowPrintModal(false);
     setPrintRequestedAt(Date.now());
   };
@@ -610,7 +608,7 @@ export default function TripView({
         <div className="min-w-0">
           <div id="overview" className={`scroll-mt-32${printSections.overview ? '' : ' print-hide'}`}><Dashboard state={state} description={currentTrip.description} total={total} done={done} startDate={currentTrip.start_date} endDate={currentTrip.end_date} weather={weather} /></div>
           <div id="prepare" className={`scroll-mt-32${printSections.prepare ? '' : ' print-hide'}`}><Checklist state={state} editUnlocked={editUnlocked} mutate={mutate} canCheck={canCheck} onToggle={toggleCheck} /></div>
-          <div id="itinerary" className={`scroll-mt-32${printSections.itinerary ? '' : ' print-hide'}`}><DaysSection state={state} editUnlocked={editUnlocked} mutate={mutate} mutateNoSave={mutateNoSave} startDate={currentTrip.start_date} weather={weather} authorName={myPresenceName} onCollapseAll={() => mutateNoSave((s) => { s.days.forEach((_, i) => { s.collapsed[i] = true; }); })} showDiscussionInPrint={printSections.notes} /></div>
+          <div id="itinerary" className={`scroll-mt-32${printSections.itinerary ? '' : ' print-hide'}`}><DaysSection state={state} editUnlocked={editUnlocked} mutate={mutate} mutateNoSave={mutateNoSave} startDate={currentTrip.start_date} weather={weather} authorName={myPresenceName} showDiscussionInPrint={printSections.notes} /></div>
           <div id="stay" className={`scroll-mt-32${printSections.stay ? '' : ' print-hide'}`}><HotelsSection state={state} editUnlocked={editUnlocked} mutate={mutate} authorName={myPresenceName} printOnlyIndex={printHotelFilter === 'all' ? null : printHotelFilter} showDiscussionInPrint={printSections.notes} /></div>
           <div id="currency" className={`scroll-mt-32${printSections.currency ? '' : ' print-hide'}`}><CurrencySection state={state} homeCurrency={currentTrip.home_currency} mutate={mutate} /></div>
           <div id="transport" className={`scroll-mt-32${printSections.transport ? '' : ' print-hide'}`}><TransportSection state={state} editUnlocked={editUnlocked} mutate={mutate} homeCurrency={currentTrip.home_currency} printOnlyIndex={printTransportFilter === 'all' ? null : printTransportFilter} /></div>
