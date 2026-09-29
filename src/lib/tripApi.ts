@@ -12,6 +12,7 @@ export interface TripMeta {
   end_date: string | null;
   home_currency: string;
   foreign_currency: string;
+  is_local: boolean;
   exchange_rate: number | string | null;
   checklist_categories: string[] | null;
   packing_categories: string[] | null;
@@ -45,7 +46,7 @@ function result<T>(label: string, response: { data: T | null; error: { message: 
   return response.data as T;
 }
 
-const TRIP_META_COLUMNS = 'id,slug,title,destination,description,start_date,end_date,home_currency,foreign_currency,exchange_rate,checklist_categories,packing_categories,visibility,owner_id,cover_image_url,variant_label,audience_label,content_version,created_at,updated_at';
+const TRIP_META_COLUMNS = 'id,slug,title,destination,description,start_date,end_date,home_currency,foreign_currency,is_local,exchange_rate,checklist_categories,packing_categories,visibility,owner_id,cover_image_url,variant_label,audience_label,content_version,created_at,updated_at';
 
 export async function loadTrip(slug: string): Promise<TripWorkspace> {
   const client = requireClient();
@@ -123,6 +124,7 @@ export async function loadTrip(slug: string): Promise<TripWorkspace> {
       : undefined,
   } as NoteItem));
   state.attachments = (result('读取附件', attachments) as Array<Record<string, unknown>>).map((item) => ({ label: String(item.label || ''), url: String(item.url || '') } as LinkItem));
+  state.isLocal = trip.is_local === true;
   state.foreignCurrency = trip.foreign_currency || '';
   state.exchangeRate = trip.exchange_rate ?? '';
   state.checklistCategories = Array.isArray(trip.checklist_categories) ? trip.checklist_categories : [];
@@ -177,6 +179,12 @@ export async function verifyEditPassword(token: string, password: string): Promi
   const response = await client.rpc('verify_trip_edit_password', { p_token_hash: tokenHash, p_password: password });
   if (response.error) throw new Error(`验证密码：${response.error.message}`);
   return response.data === true;
+}
+
+/** Writes trip-info columns (title, dates, currency…) directly on the trips row; owner only. */
+export async function updateTripMeta(tripId: string, changes: Partial<TripMeta>): Promise<void> {
+  const client = requireClient();
+  result('更新旅行信息', await client.from('trips').update(changes).eq('id', tripId));
 }
 
 export async function setTripEditPassword(tripId: string, password: string): Promise<void> {

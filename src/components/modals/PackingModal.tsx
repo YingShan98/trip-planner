@@ -3,6 +3,7 @@ import Modal from '../Modal';
 import { uid } from '../../state';
 import { confirmDialog } from '../../lib/confirm';
 import type { Mutate, PackingItem, TripState } from '../../types';
+import CategoryCombobox from '../CategoryCombobox';
 
 const CATEGORIES = ['衣物', '洗漱用品', '证件', '电子产品', '药品', '其他'] as const;
 const FALLBACK_CATEGORY = '其他';
@@ -94,10 +95,11 @@ const CATEGORY_ICONS: Record<string, string> = {
 };
 
 export default function PackingModal({
-  state, editUnlocked, mutate, canCheck, onToggle, onClose,
+  state, editUnlocked, mutate, canCheck, onToggle, onRequestEdit, onClose,
 }: {
   state: TripState; editUnlocked: boolean; mutate: Mutate;
   canCheck: boolean; onToggle: (list: 'checklist' | 'packing', id: string, done: boolean) => void;
+  onRequestEdit?: () => void;
   onClose: () => void;
 }) {
   const [newText, setNewText] = useState('');
@@ -109,13 +111,16 @@ export default function PackingModal({
   const pct = total === 0 ? 0 : Math.round((packed / total) * 100);
 
   const remove = (i: number) => mutate((d) => { d.packing.splice(i, 1); });
+  const rememberCategory = (d: TripState, cat: string) => {
+    if (!(CATEGORIES as readonly string[]).includes(cat) && !d.packingCategories.includes(cat)) d.packingCategories.push(cat);
+  };
   const add = () => {
     const v = newText.trim();
     if (!v) return;
     const cat = newCat.trim() || FALLBACK_CATEGORY;
     mutate((d) => {
       d.packing.push({ id: uid('p'), text: v, done: false, category: cat });
-      if (!(CATEGORIES as readonly string[]).includes(cat) && !d.packingCategories.includes(cat)) d.packingCategories.push(cat);
+      rememberCategory(d, cat);
     });
     setNewText('');
   };
@@ -141,7 +146,12 @@ export default function PackingModal({
   return (
     <Modal onClose={onClose}>
       {/* Header */}
-      <h2 className="font-serif text-[22px] text-jade-dark mb-1">🧳 打包清单</h2>
+      <div className="flex items-center gap-3 pr-9">
+        <h2 className="font-serif text-[22px] text-jade-dark mb-1">🧳 打包清单</h2>
+        {!editUnlocked && onRequestEdit && (
+          <button className="btn-mini" onClick={onRequestEdit}>✏️ 编辑</button>
+        )}
+      </div>
 
       {/* Progress */}
       {total > 0 && (
@@ -160,7 +170,7 @@ export default function PackingModal({
       )}
 
       {/* Templates */}
-      <div className="mb-4">
+      {editUnlocked && <div className="mb-4">
         <p className="text-[11.5px] font-semibold text-muted uppercase tracking-[0.07em] mb-2">快速模板</p>
         <div className="flex flex-wrap gap-1.5">
           {Object.entries(TEMPLATES).map(([label, items]) => (
@@ -173,7 +183,7 @@ export default function PackingModal({
             </button>
           ))}
         </div>
-      </div>
+      </div>}
 
       {/* Items by category */}
       {total === 0 ? (
@@ -207,9 +217,28 @@ export default function PackingModal({
                         ? mutate((d) => { d.packing[x.idx].done = e.target.checked; })
                         : onToggle('packing', x.id, e.target.checked)}
                     />
-                    <span className={`flex-1 text-[13.5px] ${x.done ? 'line-through text-muted' : ''}`}>
-                      {x.text}
-                    </span>
+                    {editUnlocked ? (
+                      <>
+                        <input
+                          aria-label="物品名称"
+                          className={`inp flex-1 min-w-0 text-[13.5px] py-1 ${x.done ? 'line-through text-muted' : ''}`}
+                          value={x.text}
+                          placeholder="物品名称"
+                          onChange={(e) => mutate((d) => { d.packing[x.idx].text = e.target.value; })}
+                        />
+                        <CategoryCombobox
+                          ariaLabel={`「${x.text || '物品'}」的分类`}
+                          className="w-[96px] sm:w-[110px] shrink-0"
+                          value={x.category}
+                          options={knownCategories}
+                          onCommit={(cat) => mutate((d) => { d.packing[x.idx].category = cat; rememberCategory(d, cat); })}
+                        />
+                      </>
+                    ) : (
+                      <span className={`flex-1 text-[13.5px] ${x.done ? 'line-through text-muted' : ''}`}>
+                        {x.text}
+                      </span>
+                    )}
                     {editUnlocked && (
                       <button aria-label={`删除物品「${x.text || cat}」`} className="btn-mini edit-only" onClick={() => remove(x.idx)}>×</button>
                     )}
@@ -224,16 +253,13 @@ export default function PackingModal({
       {/* Add row */}
       {editUnlocked && (
         <div className="flex gap-2 mt-3 pt-3 border-t border-line edit-only">
-          <input
-            className="inp w-[110px] shrink-0 text-[13px]"
-            placeholder="分类…"
+          <CategoryCombobox
+            ariaLabel="新物品的分类"
+            className="w-[110px] shrink-0"
             value={newCat}
-            onChange={(e) => setNewCat(e.target.value)}
-            list="packing-categories"
+            options={knownCategories}
+            onCommit={setNewCat}
           />
-          <datalist id="packing-categories">
-            {knownCategories.map((c) => <option key={c} value={c} />)}
-          </datalist>
           <input
             className="inp flex-1"
             placeholder="添加物品…"

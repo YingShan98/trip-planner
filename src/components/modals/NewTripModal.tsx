@@ -2,9 +2,12 @@ import { useRef, useState } from 'react';
 import type { ChangeEvent } from 'react';
 import { toast } from '../../lib/toast';
 import { downloadJSON } from '../../lib/download';
-import { blankState, normalize, templateState } from '../../state';
+import { blankState, templateState } from '../../state';
+import { parseTripJson } from '../../lib/tripJson';
 import { createTrip } from '../../lib/tripApi';
 import { suggestDestinationImage } from '../../lib/destinationImage';
+import { fetchExchangeRate } from '../../lib/exchangeRate';
+import { convertToLocalTrip } from '../../lib/currency';
 import type { ImportedTripMeta, TripState } from '../../types';
 import Modal from '../Modal';
 
@@ -21,6 +24,10 @@ export default function NewTripModal({ onClose, onCreated }: {
   const [title, setTitle] = useState('');
   const [destination, setDestination] = useState('');
   const [currency, setCurrency] = useState('MYR');
+  const [isLocal, setIsLocal] = useState(false);
+  const [foreignCurrency, setForeignCurrency] = useState('');
+  const [exchangeRate, setExchangeRate] = useState('');
+  const [fetchingRate, setFetchingRate] = useState(false);
   const [start, setStart] = useState('');
   const [end, setEnd] = useState('');
   const [slug, setSlug] = useState('');
@@ -40,16 +47,17 @@ export default function NewTripModal({ onClose, onCreated }: {
   };
 
   const applyImportedJson = (raw: string, source: string) => {
-    let obj: unknown;
+    let meta: ImportedTripMeta, data: TripState;
     try {
-      obj = JSON.parse(raw);
+      ({ meta, data } = parseTripJson(raw));
     } catch (err) {
       toast('JSON 格式无效：' + (err as Error).message);
       return;
     }
-    const parsed = (obj && typeof obj === 'object' ? obj : {}) as { meta?: ImportedTripMeta; data?: unknown };
-    const meta = parsed.meta || {};
-    setImportedData(normalize(parsed.data ?? obj));
+    setImportedData(data);
+    setIsLocal(data.isLocal);
+    setForeignCurrency(data.foreignCurrency);
+    setExchangeRate(String(data.exchangeRate ?? ''));
     setImportedFrom(source);
     if (meta.title) setTitle(meta.title);
     if (meta.destination) setDestination(meta.destination);
@@ -79,6 +87,9 @@ export default function NewTripModal({ onClose, onCreated }: {
     setImportedData(null);
     setImportedFrom('');
     setPasteText('');
+    setIsLocal(false);
+    setForeignCurrency('');
+    setExchangeRate('');
   };
 
   const fetchImage = async () => {
@@ -91,6 +102,26 @@ export default function NewTripModal({ onClose, onCreated }: {
     } finally { setFetchingImage(false); }
   };
 
+  const fetchRate = async () => {
+    const code = foreignCurrency.trim().toUpperCase();
+    if (!code) { toast('请先填写目的地货币代码'); return; }
+    setFetchingRate(true);
+    try {
+      const rate = await fetchExchangeRate(code, currency.trim() || 'MYR');
+      if (rate !== null) { setExchangeRate(String(Number(rate.toPrecision(6)))); toast('已填入最新汇率，可再手动调整'); }
+      else toast('没有找到这个货币对的汇率，请手动填写');
+    } finally { setFetchingRate(false); }
+  };
+
+  const buildState = (): TripState => {
+    const s = structuredClone(importedData || blankState());
+    s.foreignCurrency = foreignCurrency.trim().toUpperCase();
+    s.exchangeRate = exchangeRate.trim();
+    if (isLocal) convertToLocalTrip(s);
+    else s.isLocal = false;
+    return s;
+  };
+
   const create = async () => {
     const cleanSlug = slug.trim().toLowerCase();
     if (!cleanSlug || !title.trim()) { setShowValidation(true); toast('请填写旅行名称和 Slug'); return; }
@@ -99,7 +130,7 @@ export default function NewTripModal({ onClose, onCreated }: {
       const createdSlug = await createTrip({
         slug: cleanSlug, title: title.trim(), destination: destination.trim(), start_date: start || null,
         end_date: end || null, home_currency: currency.trim() || 'MYR', description, cover_image_url: coverImageUrl.trim(),
-        variant_label: variantLabel.trim(), audience_label: audienceLabel.trim(), state: importedData || blankState(),
+        variant_label: variantLabel.trim(), audience_label: audienceLabel.trim(), state: buildState(),
       });
       toast('旅行已创建');
       onClose();
@@ -180,6 +211,36 @@ export default function NewTripModal({ onClose, onCreated }: {
         </div>
         <div className="field"><label>目的地</label><input className="inp" placeholder="广州 / Seoul / Tokyo" value={destination} onChange={(e) => setDestination(e.target.value)} /></div>
         <div className="field"><label>本地货币</label><input className="inp" value={currency} onChange={(e) => setCurrency(e.target.value)} /></div>
+        <div className="field sm:col-span-2">
+          <label>旅行类型</label>
+          <div className="flex gap-1.5 p-1 bg-surface-2 rounded-lg w-fit" role="radiogroup" aria-label="旅行类型">
+            {([[false, '✈️ 出国旅行'], [true, '🏠 本地旅行']] as const).map(([local, label]) => (
+              <button
+                key={label}
+                type="button"
+                role="radio"
+                aria-checked={isLocal === local}
+                className={`btn-mini !border-transparent ${isLocal === local ? 'bg-surface shadow-xs !text-jade-dark font-bold' : ''}`}
+                onClick={() => setIsLocal(local)}
+              >
+                {label}
+              </button>
+            ))}
+          </div>
+          <span className="text-muted text-[11.5px]">{isLocal ? '本地旅行不显示货币换算，所有金额都以本地货币计算。' : '出国旅行可设置目的地货币和汇率，预算与交通会显示双币金额。'}</span>
+        </div>
+        {!isLocal && (
+          <>
+            <div className="field"><label>目的地货币</label><input className="inp" placeholder="例如 CNY / JPY / KRW" value={foreignCurrency} onChange={(e) => setForeignCurrency(e.target.value.toUpperCase())} /></div>
+            <div className="field">
+              <label>汇率：1 {foreignCurrency.trim() || '外币'} = ? {currency.trim() || 'MYR'}</label>
+              <div className="flex gap-2">
+                <input className="inp flex-1 min-w-0" type="number" step="any" min="0" placeholder="例如 0.62" value={exchangeRate} onChange={(e) => setExchangeRate(e.target.value)} />
+                <button type="button" className="btn-ghost shrink-0" disabled={fetchingRate} onClick={fetchRate}>{fetchingRate ? '获取中…' : '获取最新'}</button>
+              </div>
+            </div>
+          </>
+        )}
         <div className="field"><label>开始日期</label><input className="inp" type="date" value={start} onChange={(e) => setStart(e.target.value)} /></div>
         <div className="field"><label>结束日期</label><input className="inp" type="date" value={end} onChange={(e) => setEnd(e.target.value)} /></div>
         <div className="field sm:col-span-2">

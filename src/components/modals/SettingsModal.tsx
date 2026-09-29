@@ -7,8 +7,10 @@ import { suggestDestinationImage } from '../../lib/destinationImage';
 import { fetchExchangeRate } from '../../lib/exchangeRate';
 import Modal from '../Modal';
 
-export default function SettingsModal({ trip, onClose, onSaved }: {
+export default function SettingsModal({ trip, isLocal, onClose, onSaved }: {
   trip: TripMeta;
+  /** Local trips have no foreign currency, so its fields are hidden. */
+  isLocal: boolean;
   onClose: () => void;
   onSaved: (changes: Partial<TripMeta>) => void;
 }) {
@@ -91,14 +93,14 @@ export default function SettingsModal({ trip, onClose, onSaved }: {
         <div className="field"><label>本地货币</label><input className="inp" value={currency} onChange={(e) => setCurrency(e.target.value)} /></div>
         <div className="field"><label>开始日期</label><input className="inp" type="date" value={start} onChange={(e) => setStart(e.target.value)} /></div>
         <div className="field"><label>结束日期</label><input className="inp" type="date" value={end} onChange={(e) => setEnd(e.target.value)} /></div>
-        <div className="field"><label>外币</label><input className="inp" placeholder="例如 CNY" value={foreignCurrency} onChange={(e) => setForeignCurrency(e.target.value)} /></div>
-        <div className="field">
+        {!isLocal && <div className="field"><label>外币</label><input className="inp" placeholder="例如 CNY" value={foreignCurrency} onChange={(e) => setForeignCurrency(e.target.value)} /></div>}
+        {!isLocal && <div className="field">
           <label>汇率（1 外币 = 本地币）</label>
           <div className="flex gap-2">
             <input className="inp flex-1" type="number" value={exchangeRate} onChange={(e) => setExchangeRate(e.target.value)} />
             <button type="button" className="btn-ghost shrink-0" disabled={fetchingRate} onClick={fetchRate}>{fetchingRate ? '获取中…' : '获取最新'}</button>
           </div>
-        </div>
+        </div>}
         <div className="field col-span-2">
           <label>封面图片链接（可选）</label>
           <div className="flex gap-2">

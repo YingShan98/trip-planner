@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { uid } from '../../state';
 import type { Mutate, TripState } from '../../types';
 import PackingModal from '../modals/PackingModal';
+import CategoryCombobox from '../CategoryCombobox';
 
 const DEFAULT_CATEGORIES = ['日期与机票', '预约与订票', '证件与长者优惠', '交通与包车', '支付与人数', '出发前复核'];
 const FALLBACK_CATEGORY = '其他';
@@ -17,10 +18,12 @@ const CATEGORY_ICONS: Record<string, string> = {
 };
 
 export default function Checklist({
-  state, editUnlocked, mutate, canCheck, onToggle,
+  state, editUnlocked, mutate, canCheck, onToggle, onRequestEdit,
 }: {
   state: TripState; editUnlocked: boolean; mutate: Mutate;
   canCheck: boolean; onToggle: (list: 'checklist' | 'packing', id: string, done: boolean) => void;
+  /** Switches the trip into edit mode; omitted when the viewer can't edit. */
+  onRequestEdit?: () => void;
 }) {
   const [newText, setNewText] = useState('');
   const [newCat, setNewCat] = useState(DEFAULT_CATEGORIES[0]);
@@ -41,13 +44,17 @@ export default function Checklist({
     items: checklist.map((x, i) => ({ ...x, idx: i })).filter((x) => (x.category || FALLBACK_CATEGORY) === cat),
   })).filter((g) => g.items.length > 0);
 
+  const rememberCategory = (d: TripState, cat: string) => {
+    if (!DEFAULT_CATEGORIES.includes(cat) && !d.checklistCategories.includes(cat)) d.checklistCategories.push(cat);
+  };
+
   const add = () => {
     const v = newText.trim();
     if (!v) return;
     const cat = newCat.trim() || FALLBACK_CATEGORY;
     mutate((d) => {
       d.checklist.push({ id: uid('c'), text: v, done: false, category: cat });
-      if (!DEFAULT_CATEGORIES.includes(cat) && !d.checklistCategories.includes(cat)) d.checklistCategories.push(cat);
+      rememberCategory(d, cat);
     });
     setNewText('');
   };
@@ -106,7 +113,26 @@ export default function Checklist({
                         ? mutate((d) => { d.checklist[x.idx].done = e.target.checked; })
                         : onToggle('checklist', x.id, e.target.checked)}
                     />
-                    <span className={`flex-1 text-[14px] ${x.done ? 'line-through text-muted' : ''}`}>{x.text}</span>
+                    {editUnlocked ? (
+                      <>
+                        <input
+                          aria-label="事项内容"
+                          className={`inp flex-1 min-w-0 text-[14px] py-1 ${x.done ? 'line-through text-muted' : ''}`}
+                          value={x.text}
+                          placeholder="事项内容"
+                          onChange={(e) => mutate((d) => { d.checklist[x.idx].text = e.target.value; })}
+                        />
+                        <CategoryCombobox
+                          ariaLabel={`「${x.text || '事项'}」的分类`}
+                          className="w-[96px] sm:w-[120px] shrink-0"
+                          value={x.category || FALLBACK_CATEGORY}
+                          options={knownCategories}
+                          onCommit={(cat) => mutate((d) => { d.checklist[x.idx].category = cat; rememberCategory(d, cat); })}
+                        />
+                      </>
+                    ) : (
+                      <span className={`flex-1 text-[14px] ${x.done ? 'line-through text-muted' : ''}`}>{x.text}</span>
+                    )}
                     <button
                       aria-label={`删除事项「${x.text || cat}」`}
                       className="btn-mini edit-only"
@@ -124,16 +150,13 @@ export default function Checklist({
 
       {editUnlocked && (
         <div className="flex gap-2 mt-3 edit-only">
-          <input
-            className="inp w-[150px] shrink-0 text-[13px]"
-            placeholder="分类…"
+          <CategoryCombobox
+            ariaLabel="新事项的分类"
+            className="w-[150px] shrink-0"
             value={newCat}
-            onChange={(e) => setNewCat(e.target.value)}
-            list="checklist-categories"
+            options={knownCategories}
+            onCommit={setNewCat}
           />
-          <datalist id="checklist-categories">
-            {knownCategories.map((c) => <option key={c} value={c} />)}
-          </datalist>
           <input
             className="inp flex-1"
             placeholder="添加 Checklist 项目"
@@ -152,6 +175,7 @@ export default function Checklist({
           mutate={mutate}
           canCheck={canCheck}
           onToggle={onToggle}
+          onRequestEdit={onRequestEdit}
           onClose={() => setShowPacking(false)}
         />
       )}

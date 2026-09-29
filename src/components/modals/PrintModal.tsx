@@ -33,7 +33,7 @@ export default function PrintModal({
       <div className="mt-5">
         <p className="text-[11.5px] font-semibold text-muted uppercase tracking-[0.07em] mb-2">包含哪些板块</p>
         <div className="grid grid-cols-2 sm:grid-cols-3 gap-1.5">
-          {PRINT_SECTIONS.map(([id, label]) => (
+          {PRINT_SECTIONS.filter(([id]) => !(id === 'currency' && state.isLocal)).map(([id, label]) => (
             <label
               key={id}
               className={`flex items-center gap-2 border-[1.5px] rounded px-3 py-2 text-[13px] cursor-pointer transition-all duration-150 ${

@@ -11,7 +11,8 @@ export default function TransportSection({
 }) {
   const home    = homeCurrency || 'MYR';
   const foreign = state.foreignCurrency || '外币';
-  const rate    = parseRate(state.exchangeRate);
+  const local   = state.isLocal;
+  const rate    = local ? null : parseRate(state.exchangeRate);
 
   return (
     <section className="py-7 border-b border-line">
@@ -83,24 +84,28 @@ export default function TransportSection({
                     placeholder="金额"
                     onChange={(e) => mutate((d) => { d.transport[i].amount = e.target.value; })}
                   />
-                  <select
-                    className="inp editable w-auto"
-                    value={x.currency}
-                    onChange={(e) => mutate((d) => { d.transport[i].currency = e.target.value as 'home' | 'foreign'; })}
-                  >
-                    <option value="home">{home}</option>
-                    <option value="foreign">{foreign}</option>
-                  </select>
+                  {local ? (
+                    <span className="self-center text-[13px] text-muted px-1">{home}</span>
+                  ) : (
+                    <select
+                      className="inp editable w-auto"
+                      value={x.currency}
+                      onChange={(e) => mutate((d) => { d.transport[i].currency = e.target.value as 'home' | 'foreign'; })}
+                    >
+                      <option value="home">{home}</option>
+                      <option value="foreign">{foreign}</option>
+                    </select>
+                  )}
                 </div>
               ) : x.amount !== '' && x.amount !== null && !Number.isNaN(Number(x.amount)) ? (
                 <div className="rich-field">
                   <span className="rich-label">金额</span>
-                  <span className="text-[14px] font-semibold text-jade-dark">{formatMoney(Number(x.amount), x.currency === 'home' ? home : foreign)}</span>
+                  <span className="text-[14px] font-semibold text-jade-dark">{formatMoney(Number(x.amount), local || x.currency === 'home' ? home : foreign)}</span>
                 </div>
               ) : null}
 
               {/* Converted amount */}
-              {x.amount !== '' && x.amount !== null && !Number.isNaN(Number(x.amount)) && (() => {
+              {!local && x.amount !== '' && x.amount !== null && !Number.isNaN(Number(x.amount)) && (() => {
                 const conv = convertAmount(Number(x.amount), x.currency, rate);
                 return (
                   <p className="text-muted text-[12.5px] border-t border-line pt-2">

@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react';
 import type { RealtimeChannel } from '@supabase/supabase-js';
 import { sb } from '../../lib/supabase';
 import { toast } from '../../lib/toast';
@@ -6,7 +6,7 @@ import { confirmDialog } from '../../lib/confirm';
 import { dateRange, dayDate, formatDateWithWeekday, tripCountdownLabel } from '../../lib/format';
 import { fetchWeather, type WeatherResult } from '../../lib/weather';
 import { downloadJSON } from '../../lib/download';
-import { createShare, deleteTrip, getTripRole, loadSharedTrip, loadTrip, saveSharedTrip, saveTrip, SaveConflictError, verifyEditPassword, type TripMeta } from '../../lib/tripApi';
+import { createShare, deleteTrip, getTripRole, loadSharedTrip, loadTrip, saveSharedTrip, saveTrip, SaveConflictError, updateTripMeta, verifyEditPassword, type TripMeta } from '../../lib/tripApi';
 import { ensureGuestSession, getExistingGuestUser, getTripEditEvents, isAnonymousUser, setGuestName, type TripEditEvent } from '../../lib/guestAuth';
 import type { TripState } from '../../types';
 import { parseRate } from '../../lib/currency';
@@ -24,6 +24,7 @@ import Modal from '../Modal';
 import GuestIdentityModal from '../modals/GuestIdentityModal';
 import EditHistoryModal from '../modals/EditHistoryModal';
 import PrintModal, { defaultPrintSections, type PrintSections } from '../modals/PrintModal';
+import ImportIntoTripModal, { type TripMetaChanges } from '../modals/ImportIntoTripModal';
 
 function buildShareLink(token: string): string {
   const u = new URL(location.href);
@@ -63,6 +64,7 @@ export default function TripView({
   const [isSaving, setIsSaving] = useState(false);
   const [activeSection, setActiveSection] = useState<string>(SECTIONS[0][0]);
   const [showPrintModal, setShowPrintModal] = useState(false);
+  const [showImport, setShowImport] = useState(false);
   const [printSections, setPrintSections] = useState<PrintSections>(defaultPrintSections);
   const [printHotelFilter, setPrintHotelFilter] = useState<number | 'all'>('all');
   const [printTransportFilter, setPrintTransportFilter] = useState<number | 'all'>('all');
@@ -87,6 +89,39 @@ export default function TripView({
   useEffect(() => { hasUnsavedChangesRef.current = hasUnsavedChanges; }, [hasUnsavedChanges]);
 
   const setEditUnlocked = (v: boolean) => { editUnlockedRef.current = v; setEditUnlockedState(v); };
+
+  /* ── Keep the reader's place when switching read ⇄ edit mode ──
+     Toggling swaps text for inputs (and adds a banner at the top), which shifts everything below.
+     Right before the switch we note the element under a point near the top of the viewport plus its
+     ancestors; after the re-render, the deepest of those React kept in the DOM is scrolled back to
+     where it was. */
+  const contentRef = useRef<HTMLDivElement>(null);
+  const scrollAnchorRef = useRef<{ chain: Element[]; tops: number[] } | null>(null);
+
+  const captureScrollAnchor = () => {
+    const col = contentRef.current;
+    scrollAnchorRef.current = null;
+    if (!col) return;
+    const rect = col.getBoundingClientRect();
+    const y = Math.min(window.innerHeight - 1, Math.max(160, window.innerHeight * 0.3));
+    // elementsFromPoint also sees through modals/floating buttons to the page content beneath.
+    const hit = document.elementsFromPoint(rect.left + rect.width / 2, y).find((el) => el !== col && col.contains(el));
+    if (!hit) return;
+    const chain: Element[] = [];
+    for (let el: Element | null = hit; el && el !== col; el = el.parentElement) chain.push(el);
+    scrollAnchorRef.current = { chain, tops: chain.map((el) => el.getBoundingClientRect().top) };
+  };
+
+  useLayoutEffect(() => {
+    const anchor = scrollAnchorRef.current;
+    scrollAnchorRef.current = null;
+    if (!anchor) return;
+    const i = anchor.chain.findIndex((el) => el.isConnected);
+    if (i < 0) return;
+    const delta = anchor.chain[i].getBoundingClientRect().top - anchor.tops[i];
+    // 'instant' overrides the page-wide `scroll-behavior: smooth`, so the jump isn't visible.
+    if (Math.abs(delta) >= 1) window.scrollTo({ top: window.scrollY + delta, behavior: 'instant' });
+  }, [editUnlocked]);
 
   /* ── Load trip ── */
   useEffect(() => {
@@ -272,6 +307,7 @@ export default function TripView({
   const toggleEdit = async () => {
     if (editUnlocked) {
       if (hasUnsavedChanges && !await confirmDialog('还有未保存的修改，确定退出编辑模式吗？', { title: '退出编辑模式', confirmLabel: '退出' })) return;
+      captureScrollAnchor();
       setEditUnlocked(false);
       return;
     }
@@ -286,6 +322,7 @@ export default function TripView({
       } catch (error) { toast('无法开启访客编辑：' + (error as Error).message); return; }
     }
     if (!shareToken && role !== 'owner' && role !== 'editor') { toast('请先登录并获得这趟旅行的编辑权限'); return; }
+    captureScrollAnchor();
     setEditUnlocked(true);
     toast('已进入编辑模式');
   };
@@ -304,6 +341,7 @@ export default function TripView({
         setEditPasswordState(password || '');
       }
       setShowGuestIdentity(false);
+      captureScrollAnchor();
       setEditUnlocked(true);
       toast(`已作为「${name}」进入编辑模式`);
     } catch (error) { toast('访客身份保存失败：' + (error as Error).message); }
@@ -423,15 +461,57 @@ export default function TripView({
   const exportJSON = () => {
     if (!currentTrip || !state) return;
     downloadJSON((slug || 'trip') + '.json', {
-    meta: { title: currentTrip.title, destination: currentTrip.destination, start_date: currentTrip.start_date, end_date: currentTrip.end_date, currency: currentTrip.home_currency, description: currentTrip.description, cover_image_url: currentTrip.cover_image_url, variant: currentTrip.variant_label, audience: currentTrip.audience_label },
+    meta: { slug: currentTrip.slug, title: currentTrip.title, destination: currentTrip.destination, start_date: currentTrip.start_date, end_date: currentTrip.end_date, currency: currentTrip.home_currency, description: currentTrip.description, cover_image_url: currentTrip.cover_image_url, variant: currentTrip.variant_label, audience: currentTrip.audience_label },
       data: state,
     });
+  };
+
+  /* Replaces this trip's content (and optionally its info) with an exported JSON, in place — same slug,
+     same share links. Trip info goes first because save_trip_workspace maps each amount's 'home'/'foreign'
+     key to a currency code using the stored home currency; it's rolled back if the content save is
+     cancelled on a conflict. Returns whether the import happened. */
+  const importIntoTrip = async (data: TripState, metaChanges: TripMetaChanges): Promise<boolean> => {
+    const trip = currentTripRef.current;
+    if (!trip) return false;
+    if (hasUnsavedChanges && !await confirmDialog('你还有未保存的修改，用 JSON 覆盖会丢弃这些修改。继续吗？', { title: '丢弃未保存的修改', confirmLabel: '丢弃并继续', danger: true })) return false;
+    const previousMeta = Object.fromEntries(Object.keys(metaChanges).map((k) => [k, trip[k as keyof TripMeta]])) as Partial<TripMeta>;
+    const hasMeta = Object.keys(metaChanges).length > 0;
+    saveInFlightRef.current = true;
+    try {
+      if (hasMeta) await updateTripMeta(trip.id, metaChanges);
+      let force = false;
+      for (;;) {
+        try { await saveTrip(slug, data, trip.content_version, force); break; }
+        catch (e) {
+          if (!(e instanceof SaveConflictError)) throw e;
+          if (await confirmDialog('有其他人刚刚保存了这趟旅行的更新，仍要用 JSON 覆盖吗？', { title: '保存冲突', confirmLabel: '仍然覆盖', cancelLabel: '取消', danger: true })) { force = true; continue; }
+          if (hasMeta) await updateTripMeta(trip.id, previousMeta);
+          toast('已取消导入，旅行没有改动');
+          return false;
+        }
+      }
+      const workspace = await loadTrip(slug);
+      setCurrentTrip(workspace.trip);
+      setState(workspace.state);
+      setHasUnsavedChanges(false);
+      setSyncStatus('已同步');
+      toast('已用 JSON 更新这趟旅行');
+      return true;
+    } catch (e) {
+      toast('导入失败：' + (e as Error).message);
+      return false;
+    } finally {
+      saveInFlightRef.current = false;
+    }
   };
 
   if (!currentTrip || !state) {
     return <main className="flex items-center justify-center min-h-[60vh] text-muted">加载中…</main>;
   }
 
+  const canToggleEdit = !readOnly && ((!shareToken && role === 'owner') || (Boolean(shareToken) && sharePermission === 'edit'));
+  const hideCurrency = state.isLocal && !editUnlocked;
+  const navSections = SECTIONS.filter(([id]) => !(id === 'currency' && hideCurrency));
   const total = state.days.reduce((a, d) => a + d.items.length, 0);
   const done  = state.checklist.filter((x) => x.done).length;
 
@@ -441,7 +521,7 @@ export default function TripView({
       {/* ── Banners ── */}
       {editUnlocked && (
         <div className="no-print content-gutter py-2.5 bg-gold-tint border-b border-gold-line text-gold text-[13px] font-semibold flex items-center gap-2">
-          <span aria-hidden="true">✦</span> 编辑模式已开启 <span className="font-normal">· 修改会自动保存</span>
+          <span aria-hidden="true">✦</span> 编辑模式已开启 <span className="font-normal">· 修改后请点击右下角「保存修改」</span>
         </div>
       )}
       {readOnly && (
@@ -490,7 +570,9 @@ export default function TripView({
             )}
             <span className="pill bg-white/13 border-white/22 text-white/90 hero-pill">
               💰 {currentTrip.home_currency || 'MYR'}
-              {state.foreignCurrency
+              {state.isLocal
+                ? ' · 本地旅行'
+                : state.foreignCurrency
                 ? ` · ${state.foreignCurrency}${parseRate(state.exchangeRate) ? ` @ ${parseRate(state.exchangeRate)}` : ' (未设汇率)'}`
                 : ''}
             </span>
@@ -514,7 +596,7 @@ export default function TripView({
 
           {/* Toolbar */}
           <div className="no-print flex flex-wrap items-center gap-2 mt-5 pt-5 border-t border-white/14">
-            {!readOnly && (!shareToken && role === 'owner' || shareToken && sharePermission === 'edit') && (
+            {canToggleEdit && (
               <button
                 className={`btn text-[13px] px-3.5 py-2 transition-all duration-150 ${
                   editUnlocked
@@ -558,6 +640,14 @@ export default function TripView({
             >
               ⬇️ 导出 JSON
             </button>
+            {!readOnly && !shareToken && role === 'owner' && (
+              <button
+                className="btn bg-white/10 border-white/20 text-white/88 text-[13px] px-3.5 py-2 hover:bg-white/20 hover:border-white/40 hover:text-white hover:-translate-y-px"
+                onClick={() => setShowImport(true)}
+              >
+                📥 导入 JSON 更新
+              </button>
+            )}
             <button
               className="btn bg-white/10 border-white/20 text-white/88 text-[13px] px-3.5 py-2 hover:bg-white/20 hover:border-white/40 hover:text-white hover:-translate-y-px"
               onClick={openPrintModal}
@@ -580,7 +670,7 @@ export default function TripView({
 
       <nav aria-label="行程目录" className="trip-nav sticky top-[68px] z-40 bg-surface/94 backdrop-blur-md border-b border-line shadow-xs overflow-x-auto">
         <div className="max-w-[1200px] mx-auto px-6 flex items-center gap-1 min-w-max">
-          {SECTIONS.map(([id, label]) => (
+          {navSections.map(([id, label]) => (
             <a
               key={id}
               href={`#${id}`}
@@ -595,7 +685,7 @@ export default function TripView({
       </nav>
 
       {/* ── Content ── */}
-      <div className="trip-layout max-w-[1200px] mx-auto px-6 pb-24">
+      <div className="trip-layout max-w-[1200px] mx-auto px-6 pb-44">
         <aside className="trip-sidebar" aria-label="行程侧栏">
           <p className="text-[11px] font-bold tracking-[0.12em] text-muted uppercase mb-2">每天安排</p>
           {state.days.length
@@ -605,18 +695,22 @@ export default function TripView({
               })
             : <p className="text-muted text-[12.5px] px-2.5">还没有安排 Day</p>}
         </aside>
-        <div className="min-w-0">
+        <div className="min-w-0" ref={contentRef}>
           <div id="overview" className={`scroll-mt-32${printSections.overview ? '' : ' print-hide'}`}><Dashboard state={state} description={currentTrip.description} total={total} done={done} startDate={currentTrip.start_date} endDate={currentTrip.end_date} weather={weather} /></div>
-          <div id="prepare" className={`scroll-mt-32${printSections.prepare ? '' : ' print-hide'}`}><Checklist state={state} editUnlocked={editUnlocked} mutate={mutate} canCheck={canCheck} onToggle={toggleCheck} /></div>
+          <div id="prepare" className={`scroll-mt-32${printSections.prepare ? '' : ' print-hide'}`}><Checklist state={state} editUnlocked={editUnlocked} mutate={mutate} canCheck={canCheck} onToggle={toggleCheck} onRequestEdit={canToggleEdit ? toggleEdit : undefined} /></div>
           <div id="itinerary" className={`scroll-mt-32${printSections.itinerary ? '' : ' print-hide'}`}><DaysSection state={state} editUnlocked={editUnlocked} mutate={mutate} mutateNoSave={mutateNoSave} startDate={currentTrip.start_date} weather={weather} authorName={myPresenceName} showDiscussionInPrint={printSections.notes} /></div>
           <div id="stay" className={`scroll-mt-32${printSections.stay ? '' : ' print-hide'}`}><HotelsSection state={state} editUnlocked={editUnlocked} mutate={mutate} authorName={myPresenceName} printOnlyIndex={printHotelFilter === 'all' ? null : printHotelFilter} showDiscussionInPrint={printSections.notes} /></div>
-          <div id="currency" className={`scroll-mt-32${printSections.currency ? '' : ' print-hide'}`}><CurrencySection state={state} homeCurrency={currentTrip.home_currency} mutate={mutate} /></div>
+          <div id="currency" className={`scroll-mt-32${printSections.currency && !state.isLocal ? '' : ' print-hide'}`}><CurrencySection state={state} homeCurrency={currentTrip.home_currency} editUnlocked={editUnlocked} mutate={mutate} /></div>
           <div id="transport" className={`scroll-mt-32${printSections.transport ? '' : ' print-hide'}`}><TransportSection state={state} editUnlocked={editUnlocked} mutate={mutate} homeCurrency={currentTrip.home_currency} printOnlyIndex={printTransportFilter === 'all' ? null : printTransportFilter} /></div>
           <div id="budget" className={`scroll-mt-32${printSections.budget ? '' : ' print-hide'}`}><BudgetSection state={state} editUnlocked={editUnlocked} mutate={mutate} currency={currentTrip.home_currency} /></div>
           <div id="notes" className={`scroll-mt-32${printSections.notes ? '' : ' print-hide'}`}><NotesSection state={state} editUnlocked={editUnlocked} mutate={mutate} authorName={myPresenceName} /></div>
           <div id="attachments" className={`scroll-mt-32${printSections.attachments ? '' : ' print-hide'}`}><AttachmentsSection state={state} editUnlocked={editUnlocked} mutate={mutate} /></div>
         </div>
       </div>
+
+      {showImport && (
+        <ImportIntoTripModal trip={currentTrip} current={state} onClose={() => setShowImport(false)} onImport={importIntoTrip} />
+      )}
 
       {showPrintModal && (
         <PrintModal
@@ -632,25 +726,50 @@ export default function TripView({
         />
       )}
 
-      {/* ── FAB save ── */}
-      {editUnlocked && (
-        <button
-          className={`no-print fixed right-5 bottom-5 z-[60] rounded-full px-5 py-3 text-[13.5px] font-bold shadow-md transition-all duration-150 flex items-center gap-1.5 ${hasUnsavedChanges ? 'bg-coral text-white hover:bg-danger' : 'bg-jade-dark text-white hover:bg-jade'} disabled:opacity-70`}
-          onClick={saveRemote}
-          disabled={!hasUnsavedChanges || isSaving}
-          title={hasUnsavedChanges ? '保存未保存的修改' : '当前没有未保存的修改'}
-        >
-          {isSaving ? '⏳ 保存中…' : hasUnsavedChanges ? '💾 保存修改' : '✓ 已保存'}
-        </button>
-      )}
-
-      {showTop && <button className="no-print fixed right-5 bottom-20 z-[60] btn-primary rounded-full shadow-md" onClick={() => window.scrollTo({ top: 0, behavior: 'smooth' })} aria-label="回到顶部">↑ 顶部</button>}
+      {/* ── Floating actions: always reachable, so switching modes doesn't need a trip back to the header.
+             The edit toggle sits at the bottom and never moves; save appears above it while editing. ── */}
+      <div className="no-print fixed right-5 bottom-5 z-[60] flex flex-col items-end gap-2.5">
+        {showTop && <button className="btn-primary rounded-full shadow-md" onClick={() => window.scrollTo({ top: 0, behavior: 'smooth' })} aria-label="回到顶部">↑ 顶部</button>}
+        {editUnlocked && (
+          <button
+            className={`rounded-full px-5 py-3 text-[13.5px] font-bold shadow-md transition-all duration-150 flex items-center gap-1.5 ${hasUnsavedChanges ? 'bg-coral text-white hover:bg-danger' : 'bg-jade-dark text-white hover:bg-jade'} disabled:opacity-70`}
+            onClick={saveRemote}
+            disabled={!hasUnsavedChanges || isSaving}
+            title={hasUnsavedChanges ? '保存未保存的修改' : '当前没有未保存的修改'}
+          >
+            {isSaving ? '⏳ 保存中…' : hasUnsavedChanges ? '💾 保存修改' : '✓ 已保存'}
+          </button>
+        )}
+        {canToggleEdit && (
+          <button
+            className={`rounded-full px-5 py-3 text-[13.5px] font-bold shadow-md border-[1.5px] transition-all duration-150 flex items-center gap-1.5 ${
+              editUnlocked
+                ? 'bg-surface text-ink-2 border-line-strong hover:border-jade hover:text-jade-dark'
+                : 'bg-gold text-white border-gold hover:-translate-y-px'
+            }`}
+            onClick={toggleEdit}
+            aria-pressed={editUnlocked}
+            title={editUnlocked ? '退出编辑模式，回到只读查看' : '进入编辑模式，停留在当前位置'}
+          >
+            {editUnlocked ? '🔒 完成编辑' : '✏️ 编辑'}
+          </button>
+        )}
+      </div>
 
       {showSettings && (
         <SettingsModal
           trip={currentTrip}
+          isLocal={state.isLocal}
           onClose={() => setShowSettings(false)}
-          onSaved={(changes) => setCurrentTrip((prev) => (prev ? { ...prev, ...changes } : prev))}
+          onSaved={(changes) => {
+            setCurrentTrip((prev) => (prev ? { ...prev, ...changes } : prev));
+            // Settings writes the trips row directly; mirror its currency fields into the in-memory
+            // state too, or the next content save would write the old values back.
+            mutateNoSave((d) => {
+              if (changes.foreign_currency !== undefined) d.foreignCurrency = changes.foreign_currency;
+              if (changes.exchange_rate !== undefined) d.exchangeRate = changes.exchange_rate ?? '';
+            });
+          }}
         />
       )}
 

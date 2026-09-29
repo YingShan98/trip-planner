@@ -13,6 +13,7 @@ export function blankState(): TripState {
     notes: [],
     attachments: [],
     collapsed: {},
+    isLocal: false,
     foreignCurrency: '',
     exchangeRate: '',
     checklistCategories: [],
@@ -132,6 +133,7 @@ export function templateState(): TripState {
     notes: [{ author: '示例：小明', text: '示例留言内容', ts: '2027-01-01 12:00:00' }],
     attachments: [{ label: '示例：详细行程文档', url: 'https://example.com' }],
     collapsed: {},
+    isLocal: false,
     foreignCurrency: 'CNY',
     exchangeRate: 0.62,
     checklistCategories: [],
@@ -171,6 +173,7 @@ export function normalize(s: unknown): TripState {
   x.checklistCategories = Array.isArray(src.checklistCategories) ? src.checklistCategories.filter((c) => typeof c === 'string' && c.trim()) : [];
   x.packingCategories = Array.isArray(src.packingCategories) ? src.packingCategories.filter((c) => typeof c === 'string' && c.trim()) : [];
   x.collapsed = src.collapsed || {};
+  x.isLocal = src.isLocal === true;
   x.foreignCurrency = typeof src.foreignCurrency === 'string' ? src.foreignCurrency : '';
   x.exchangeRate =
     typeof src.exchangeRate === 'number' || typeof src.exchangeRate === 'string' ? src.exchangeRate : '';

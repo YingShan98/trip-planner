@@ -304,6 +304,7 @@ alter table public.trips
   add column if not exists checklist_categories text[] not null default '{}',
   add column if not exists packing_categories text[] not null default '{}',
   add column if not exists content_version bigint not null default 0,
+  add column if not exists is_local boolean not null default false,
   add column if not exists variant_label text not null default '',
   add column if not exists audience_label text not null default '';
 
@@ -432,6 +433,7 @@ begin
   v_foreign_currency := coalesce(nullif(p_state->>'foreignCurrency', ''), 'CNY');
   update public.trips set
     foreign_currency = v_foreign_currency,
+    is_local = coalesce((p_state->>'isLocal')::boolean, is_local),
     exchange_rate = nullif(p_state->>'exchangeRate', '')::numeric,
     checklist_categories = coalesce((select array_agg(value) from jsonb_array_elements_text(coalesce(p_state->'checklistCategories','[]'::jsonb))), '{}'),
     packing_categories = coalesce((select array_agg(value) from jsonb_array_elements_text(coalesce(p_state->'packingCategories','[]'::jsonb))), '{}'),
@@ -580,7 +582,7 @@ begin
   select trip_id into v_trip_id from public.trip_shares where token_hash = p_token_hash and revoked_at is null and (expires_at is null or expires_at > now()) limit 1;
   if v_trip_id is null then return null; end if;
   select (edit_password_hash is not null) into v_requires_password from public.trips where id = v_trip_id;
-  select jsonb_build_object('id', t.id, 'slug', t.slug, 'title', t.title, 'destination', t.destination, 'description', t.description, 'start_date', t.start_date, 'end_date', t.end_date, 'home_currency', t.home_currency, 'foreign_currency', t.foreign_currency, 'exchange_rate', t.exchange_rate, 'checklist_categories', to_jsonb(t.checklist_categories), 'packing_categories', to_jsonb(t.packing_categories), 'visibility', t.visibility, 'owner_id', t.owner_id, 'cover_image_url', t.cover_image_url, 'variant_label', t.variant_label, 'audience_label', t.audience_label, 'content_version', t.content_version, 'created_at', t.created_at, 'updated_at', t.updated_at) into v_trip from public.trips t where t.id = v_trip_id;
+  select jsonb_build_object('id', t.id, 'slug', t.slug, 'title', t.title, 'destination', t.destination, 'description', t.description, 'start_date', t.start_date, 'end_date', t.end_date, 'home_currency', t.home_currency, 'foreign_currency', t.foreign_currency, 'is_local', t.is_local, 'exchange_rate', t.exchange_rate, 'checklist_categories', to_jsonb(t.checklist_categories), 'packing_categories', to_jsonb(t.packing_categories), 'visibility', t.visibility, 'owner_id', t.owner_id, 'cover_image_url', t.cover_image_url, 'variant_label', t.variant_label, 'audience_label', t.audience_label, 'content_version', t.content_version, 'created_at', t.created_at, 'updated_at', t.updated_at) into v_trip from public.trips t where t.id = v_trip_id;
   select jsonb_build_object(
     'days', coalesce((select jsonb_agg(jsonb_build_object('n', d.day_number, 'title', d.title, 'intensity', d.intensity, 'steps', d.walking_note, 'mapUrl', d.map_url, 'notes', d.notes, 'items', coalesce((select jsonb_agg(jsonb_build_object('t', a.time_label, 'x', a.title, 'place', a.place, 'move', a.transport_note, 'fee', a.fee_note, 'visitHours', a.visit_hours, 'closedDays', a.closed_days, 'recommendedWeekdays', a.recommended_weekdays, 'imageUrl', a.image_url, 'duration', a.duration, 'accessibility', a.accessibility, 'alternative', a.alternative, 'earlyExit', a.early_exit, 'link', coalesce((select jsonb_agg(jsonb_build_object('label', l.label, 'url', l.url) order by l.sort_order) from public.activity_links l where l.activity_id = a.id), '[]'::jsonb)) order by a.sort_order) from public.activities a where a.day_id = d.id), '[]'::jsonb)) order by d.day_number) from public.trip_days d where d.trip_id = v_trip_id), '[]'::jsonb),
     'checklist', coalesce((select jsonb_agg(jsonb_build_object('id', c.id, 'text', c.text, 'done', c.is_done, 'category', c.category) order by c.sort_order) from public.checklist_items c where c.trip_id = v_trip_id), '[]'::jsonb),
@@ -590,7 +592,7 @@ begin
     'budget', coalesce((select jsonb_agg(jsonb_build_object('category', b.category, 'unit', b.unit, 'quantity', b.quantity, 'unitPrice', b.unit_price, 'currency', case when b.currency_code = t.home_currency then 'home' else 'foreign' end, 'note', b.note) order by b.sort_order) from public.budget_items b join public.trips t on t.id = b.trip_id where b.trip_id = v_trip_id), '[]'::jsonb),
     'notes', coalesce((select jsonb_agg(jsonb_build_object('author', n.author_name, 'text', n.content, 'ts', n.created_at, 'target', case when n.target_type is not null then jsonb_build_object('type', n.target_type, 'index', n.target_index) else null end) order by n.created_at desc) from public.trip_notes n where n.trip_id = v_trip_id), '[]'::jsonb),
     'attachments', coalesce((select jsonb_agg(jsonb_build_object('label', a.label, 'url', a.url) order by a.sort_order) from public.trip_attachments a where a.trip_id = v_trip_id), '[]'::jsonb),
-    'collapsed', '{}'::jsonb, 'foreignCurrency', v_trip->>'foreign_currency', 'exchangeRate', v_trip->>'exchange_rate',
+    'collapsed', '{}'::jsonb, 'isLocal', coalesce((v_trip->>'is_local')::boolean, false), 'foreignCurrency', v_trip->>'foreign_currency', 'exchangeRate', v_trip->>'exchange_rate',
     'checklistCategories', coalesce(v_trip->'checklist_categories', '[]'::jsonb), 'packingCategories', coalesce(v_trip->'packing_categories', '[]'::jsonb)
   ) into v_state;
   return jsonb_build_object('trip', v_trip, 'state', v_state, 'sharePermission', (select permission from public.trip_shares where token_hash = p_token_hash and trip_id = v_trip_id and revoked_at is null and (expires_at is null or expires_at > now()) limit 1), 'requiresEditPassword', coalesce(v_requires_password, false));

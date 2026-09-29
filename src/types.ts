@@ -112,7 +112,9 @@ export interface TripState {
   notes: NoteItem[];
   attachments: LinkItem[];
   collapsed: Record<number, boolean>;
-  /** destination/foreign currency code, e.g. 'CNY'. Home currency lives on the trip row. */
+  /** Local (domestic) travel: no currency conversion, every amount is in home currency. */
+  isLocal: boolean;
+  /** destination/foreign currency code, e.g. 'CNY'. Home currency lives on the trip row. Ignored when isLocal. */
   foreignCurrency: string;
   /** 1 unit of foreignCurrency = exchangeRate units of home currency, e.g. 1 CNY = 0.62 MYR */
   exchangeRate: number | string;
@@ -124,6 +126,8 @@ export interface TripState {
 export type Mutate = (fn: (draft: TripState) => void) => void;
 
 export interface ImportedTripMeta {
+  /** The trip's URL slug when exported; lets an import into an existing trip spot a file from a different trip. */
+  slug?: string;
   title?: string;
   destination?: string;
   currency?: string;
