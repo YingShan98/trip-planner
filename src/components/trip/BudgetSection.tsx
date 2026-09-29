@@ -13,6 +13,7 @@ export default function BudgetSection({
   const local   = state.isLocal;
   const rate    = local ? null : parseRate(state.exchangeRate);
 
+  const travelers = Number(state.travelers) || 0;
   let totalHome = 0, unconverted = 0;
   // On a local trip every amount is home currency, whatever an item's stored currency key says.
   const itemCurrency = (c: CurrencyKey): CurrencyKey => (local ? 'home' : c);
@@ -22,18 +23,33 @@ export default function BudgetSection({
     if (conv.home !== null) totalHome += conv.home;
     else unconverted++;
   }
-  const totalForeign = rate !== null ? totalHome / rate : null;
+  const perPerson = travelers > 0 ? totalHome / travelers : null;
 
   return (
-    <section className="py-7 border-b border-line">
-      <div className="flex justify-between items-center gap-2.5 pb-3.5 mb-4 border-b-2 border-line flex-wrap">
-        <h2 className="font-serif text-[19px] font-bold text-jade-dark">💰 预算</h2>
-        <span className="text-muted text-[13px]">
-          {home} · 估算总额 {formatMoney(totalHome, '')}
-          {totalForeign !== null ? ` ≈ ${formatMoney(totalForeign, foreign)}` : ''}
-          {!local && unconverted > 0 ? ` · ${unconverted} 项未换算（请设置汇率）` : ''}
-        </span>
+    <>
+      <div className="flex flex-wrap items-center justify-between gap-x-6 gap-y-3 mb-4 bg-jade-light border border-jade-tint rounded-lg px-4 py-3">
+        <div className="flex flex-wrap gap-x-6 gap-y-2">
+          <div>
+            <span className="block text-[11px] font-semibold text-muted uppercase tracking-[0.06em]">总计（{home}）</span>
+            <strong className="text-[18px] text-jade-dark">{formatMoney(totalHome, home)}</strong>
+          </div>
+          <div>
+            <span className="block text-[11px] font-semibold text-muted uppercase tracking-[0.06em]">每人</span>
+            <strong className="text-[18px] text-jade-dark">{perPerson !== null ? formatMoney(perPerson, home) : '未设置人数'}</strong>
+          </div>
+        </div>
+        <div className="flex items-center gap-2">
+          <span className="text-[12px] font-semibold text-muted whitespace-nowrap">同行人数</span>
+          {editUnlocked ? (
+            <input className="inp editable w-[70px] text-center" type="number" min="1" step="1" value={state.travelers}
+              placeholder="人数" onChange={(e) => mutate((d) => { d.travelers = e.target.value; })} />
+          ) : <span className="pill">{travelers > 0 ? `${travelers} 人` : '未设置'}</span>}
+        </div>
       </div>
+
+      {unconverted > 0 && (
+        <p className="text-muted text-[12.5px] mb-3.5">{unconverted} 项未换算（请设置汇率）</p>
+      )}
 
       {state.budget.length === 0 ? (
         <div className="hidden sm:block empty-state">还没有预算项目</div>
@@ -153,6 +169,6 @@ export default function BudgetSection({
           ＋ 添加预算项目
         </button>
       )}
-    </section>
+    </>
   );
 }

@@ -1,4 +1,6 @@
 /** Best-effort trip-dates forecast via Open-Meteo (free, keyless). Only covers the ~16-day forecast horizon. */
+import { toLocalIsoDate } from './format';
+
 
 export interface DailyWeather {
   date: string;
@@ -70,7 +72,7 @@ export async function fetchWeather(destination: string, startDate: string, endDa
   const place = await geocode(destination);
   if (!place) return { status: 'unavailable' };
 
-  const toIso = (d: Date) => d.toISOString().slice(0, 10);
+  const toIso = toLocalIsoDate;
   try {
     const res = await fetch(
       `https://api.open-meteo.com/v1/forecast?latitude=${place.lat}&longitude=${place.lon}` +

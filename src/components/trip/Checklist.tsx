@@ -30,7 +30,6 @@ export default function Checklist({
   const [showPacking, setShowPacking] = useState(false);
 
   const checklist = state.checklist;
-  const doneCount = checklist.filter((x) => x.done).length;
   const total = checklist.length;
 
   const presentCategories = Array.from(new Set(checklist.map((x) => x.category || FALLBACK_CATEGORY)));
@@ -63,23 +62,17 @@ export default function Checklist({
   const packingTotal = state.packing.length;
 
   return (
-    <section className="py-7 border-b border-line">
-      <div className="flex justify-between items-center gap-2.5 pb-3.5 mb-4 border-b-2 border-line flex-wrap">
-        <h2 className="font-serif text-[19px] font-bold text-jade-dark">☑️ 出发准备</h2>
-        <div className="flex items-center gap-2.5">
-          <span className="text-muted text-[13px]">
-            出发前要完成的事项{total > 0 ? ` (${doneCount}/${total})` : ''}
-          </span>
-          <button
-            className="btn text-[12.5px] px-3 py-1.5 bg-surface-3 border-line hover:bg-surface hover:border-line-strong flex items-center gap-1.5"
-            onClick={() => setShowPacking(true)}
-          >
-            🧳 打包清单
-            {packingTotal > 0 && (
-              <span className="text-[11px] text-muted">({packedCount}/{packingTotal})</span>
-            )}
-          </button>
-        </div>
+    <>
+      <div className="flex justify-end mb-4">
+        <button
+          className="btn text-[12.5px] px-3 py-1.5 bg-surface-3 border-line hover:bg-surface hover:border-line-strong flex items-center gap-1.5"
+          onClick={() => setShowPacking(true)}
+        >
+          🧳 打包清单
+          {packingTotal > 0 && (
+            <span className="text-[11px] text-muted">({packedCount}/{packingTotal})</span>
+          )}
+        </button>
       </div>
 
       {total === 0 ? (
@@ -179,6 +172,6 @@ export default function Checklist({
           onClose={() => setShowPacking(false)}
         />
       )}
-    </section>
+    </>
   );
 }

@@ -8,12 +8,7 @@ export default function AttachmentsSection({
   const attachments = state.attachments;
 
   return (
-    <section className="py-7 border-b border-line">
-      <div className="flex justify-between items-center gap-2.5 pb-3.5 mb-4 border-b-2 border-line flex-wrap">
-        <h2 className="font-serif text-[19px] font-bold text-jade-dark">📎 附件与资料</h2>
-        <span className="text-muted text-[13px]">额外的行程文档、订单或参考链接</span>
-      </div>
-
+    <>
       {editUnlocked ? (
         <div className="flex flex-col gap-1.5">
           {attachments.map((a, i) => (
@@ -63,6 +58,6 @@ export default function AttachmentsSection({
           ))}
         </div>
       )}
-    </section>
+    </>
   );
 }
