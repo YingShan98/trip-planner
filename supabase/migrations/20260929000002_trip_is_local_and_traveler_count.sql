@@ -1,4 +1,4 @@
--- 20260929000000_trip_is_local and 20260929000000_trip_traveler_count were written
+-- 20260929000001_trip_is_local and 20260929000000_trip_traveler_count were written
 -- on separate branches, and each redefines save_trip_workspace /
 -- get_shared_trip_workspace with only its own column. Whichever ran last would
 -- drop the other column from both RPCs, so redefine them here with both
