@@ -2,6 +2,7 @@ import { defaultBudget } from '../../state';
 import { convertAmount, formatMoney, parseRate } from '../../lib/currency';
 import type { CurrencyKey, Mutate, TripState } from '../../types';
 import MarkdownText from '../MarkdownText';
+import AutoGrowTextarea from '../AutoGrowTextarea';
 
 export default function BudgetSection({
   state, editUnlocked, mutate, currency,
@@ -70,7 +71,9 @@ export default function BudgetSection({
               return (
                 <tr key={i} className="group">
                   {[
-                    <input className="editable w-full border-none bg-transparent p-1 outline-none min-w-[60px] group-hover:bg-jade-light rounded transition-colors" value={x.category} onChange={(e) => mutate((d) => { d.budget[i].category = e.target.value; })} />,
+                    editUnlocked
+                      ? <AutoGrowTextarea aria-label={`预算项目 ${i + 1}`} className="editable block w-full border-none bg-transparent p-1 outline-none min-w-[60px] group-hover:bg-jade-light rounded transition-colors" value={x.category} onChange={(v) => mutate((d) => { d.budget[i].category = v; })} />
+                      : <span className="block whitespace-pre-wrap break-words">{x.category}</span>,
                     <input className="editable w-full border-none bg-transparent p-1 outline-none min-w-[60px] group-hover:bg-jade-light rounded transition-colors text-center" type="number" value={x.quantity} onChange={(e) => mutate((d) => { d.budget[i].quantity = e.target.value; })} />,
                     <input className="editable w-full border-none bg-transparent p-1 outline-none min-w-[60px] group-hover:bg-jade-light rounded transition-colors text-center" type="number" value={x.unitPrice} onChange={(e) => mutate((d) => { d.budget[i].unitPrice = e.target.value; })} />,
                     ...(local ? [] : [
@@ -81,7 +84,7 @@ export default function BudgetSection({
                       <span className="text-[13px] font-medium">{formatMoney(raw, x.currency === 'home' ? home : foreign)}</span>,
                     ]),
                     <span className="text-[13px] font-medium text-jade-dark">{conv.home !== null ? formatMoney(conv.home, home) : '未换算'}</span>,
-                    editUnlocked ? <input className="editable w-full border-none bg-transparent p-1 outline-none group-hover:bg-jade-light rounded transition-colors" value={x.note} onChange={(e) => mutate((d) => { d.budget[i].note = e.target.value; })} /> : <MarkdownText text={x.note} className="budget-note" />,
+                    editUnlocked ? <AutoGrowTextarea singleLine={false} aria-label={`预算项目 ${i + 1} 备注`} className="editable block w-full border-none bg-transparent p-1 outline-none group-hover:bg-jade-light rounded transition-colors" value={x.note} onChange={(v) => mutate((d) => { d.budget[i].note = v; })} /> : <MarkdownText text={x.note} className="budget-note" />,
                     editUnlocked ? <button aria-label={`删除预算项目「${x.category || i + 1}」`} className="btn-mini edit-only" onClick={() => mutate((d) => { d.budget.splice(i, 1); })}>×</button> : null,
                   ].map((cell, ci) => (
                     <td key={ci} className="px-3 py-2.5 border-b border-line align-middle text-[13.5px] last:border-r-0">
@@ -105,13 +108,17 @@ export default function BudgetSection({
           return (
             <article key={i} className="bg-surface border border-line rounded-lg p-4 shadow-xs">
               <div className="flex items-start gap-3 mb-3.5">
-                <input
-                  aria-label={`预算项目 ${i + 1} 分类`}
-                  className="inp editable flex-1 min-w-0 font-bold text-[15px]"
-                  value={x.category}
-                  placeholder="预算分类"
-                  onChange={(e) => mutate((d) => { d.budget[i].category = e.target.value; })}
-                />
+                {editUnlocked ? (
+                  <AutoGrowTextarea
+                    aria-label={`预算项目 ${i + 1} 分类`}
+                    className="inp editable flex-1 min-w-0 font-bold text-[15px]"
+                    value={x.category}
+                    placeholder="预算分类"
+                    onChange={(v) => mutate((d) => { d.budget[i].category = v; })}
+                  />
+                ) : (
+                  <h3 className="flex-1 min-w-0 font-bold text-[15px] whitespace-pre-wrap break-words">{x.category || '未命名项目'}</h3>
+                )}
                 {editUnlocked && (
                   <button aria-label={`删除预算项目 ${i + 1}`} className="btn-mini edit-only shrink-0" onClick={() => mutate((d) => { d.budget.splice(i, 1); })}>×</button>
                 )}
@@ -138,7 +145,7 @@ export default function BudgetSection({
                 </label>}
                 <div className="flex-1 min-w-0 rounded-sm bg-jade-light border border-jade-tint px-3 py-2">
                   <span className="block text-[11px] font-semibold text-muted">折合金额（{home}）</span>
-                  <strong className="block text-[14px] text-jade-dark truncate">{conv.home !== null ? formatMoney(conv.home, home) : '未换算'}</strong>
+                  <strong className="block text-[14px] text-jade-dark break-words">{conv.home !== null ? formatMoney(conv.home, home) : '未换算'}</strong>
                 </div>
               </div>
 
@@ -152,7 +159,7 @@ export default function BudgetSection({
               {editUnlocked ? (
                 <label className="field">
                   <span className="text-[11px] font-semibold text-muted">备注</span>
-                  <input aria-label={`预算项目 ${i + 1} 备注`} className="inp editable" value={x.note} placeholder="例如：每人、每天、含税" onChange={(e) => mutate((d) => { d.budget[i].note = e.target.value; })} />
+                  <AutoGrowTextarea singleLine={false} aria-label={`预算项目 ${i + 1} 备注`} className="inp editable" value={x.note} placeholder="例如：每人、每天、含税" onChange={(v) => mutate((d) => { d.budget[i].note = v; })} />
                 </label>
               ) : x.note ? (
                 <div className="rich-field"><span className="rich-label">备注</span><MarkdownText text={x.note} /></div>

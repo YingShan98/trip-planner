@@ -8,6 +8,7 @@ import { weatherEmoji, type WeatherResult } from '../../lib/weather';
 import MarkdownText from '../MarkdownText';
 import CommentThread from './CommentThread';
 import { parseTimeRange, formatTimeRange } from '../../lib/activityTime';
+import AutoGrowTextarea from '../AutoGrowTextarea';
 const intensityLabel = (i: Intensity) => i === 'light' ? '轻松' : i === 'medium' ? '中等' : '较累';
 const intensityClass = (i: Intensity) =>
   i === 'light'  ? 'bg-[#e5f4ec] text-[#2a7d52] border-[#b8ddc7]' :
@@ -81,8 +82,8 @@ function ActivityRow({ a, di, ai, total, editUnlocked, mutate }: {
           </div>
         ) : <span className="pill justify-center">{a.t || '时间待定'}</span>}
         {editUnlocked ? (
-          <input className="inp editable" value={a.x} placeholder="行程内容"
-            onChange={(e) => mutate((d) => { d.days[di].items[ai].x = e.target.value; })} />
+          <AutoGrowTextarea className="inp editable" value={a.x} placeholder="行程内容"
+            onChange={(v) => mutate((d) => { d.days[di].items[ai].x = v; })} />
         ) : <MarkdownText text={a.x} className="activity-title" />}
         {editUnlocked && (
           <div className="flex gap-1">
@@ -95,8 +96,8 @@ function ActivityRow({ a, di, ai, total, editUnlocked, mutate }: {
       </div>
       {editUnlocked && (
         <div className="flex gap-2 items-center mb-2">
-          <input className="inp editable flex-1" value={a.place} placeholder="📍 地点名称或地址（用于地图/路线），如 广东省博物馆"
-            onChange={(e) => mutate((d) => { d.days[di].items[ai].place = e.target.value; })} />
+          <AutoGrowTextarea className="inp editable flex-1" value={a.place} placeholder="📍 地点名称或地址（用于地图/路线），如 广东省博物馆"
+            onChange={(v) => mutate((d) => { d.days[di].items[ai].place = v; })} />
           {a.place.trim() && (
             <a href={googleMapsSearchUrl(a.place)} target="_blank" rel="noopener noreferrer"
               className="btn-mini edit-only shrink-0 no-underline hover:no-underline">核对位置 ↗</a>
@@ -105,14 +106,14 @@ function ActivityRow({ a, di, ai, total, editUnlocked, mutate }: {
       )}
       <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
         {editUnlocked ? (
-          <input className="inp editable" value={a.move} placeholder="交通（如何前往这一站）"
-            onChange={(e) => mutate((d) => { d.days[di].items[ai].move = e.target.value; })} />
+          <AutoGrowTextarea singleLine={false} className="inp editable" value={a.move} placeholder="交通（如何前往这一站）"
+            onChange={(v) => mutate((d) => { d.days[di].items[ai].move = v; })} />
         ) : a.move ? (
           <div className="rich-field"><span className="rich-label">交通</span><MarkdownText text={a.move} /></div>
         ) : null}
         {editUnlocked ? (
-          <input className="inp editable" value={a.fee} placeholder="费用"
-            onChange={(e) => mutate((d) => { d.days[di].items[ai].fee = e.target.value; })} />
+          <AutoGrowTextarea singleLine={false} className="inp editable" value={a.fee} placeholder="费用"
+            onChange={(v) => mutate((d) => { d.days[di].items[ai].fee = v; })} />
         ) : a.fee ? (
           <div className="rich-field"><span className="rich-label">费用</span><MarkdownText text={a.fee} /></div>
         ) : null}
@@ -147,12 +148,12 @@ function ActivityRow({ a, di, ai, total, editUnlocked, mutate }: {
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
               <input className="inp editable text-[12.5px]" value={a.duration} placeholder="建议停留时长，如约2小时"
                 onChange={(e) => mutate((d) => { d.days[di].items[ai].duration = e.target.value; })} />
-              <input className="inp editable text-[12.5px]" value={a.accessibility} placeholder="无障碍/行动不便提示"
-                onChange={(e) => mutate((d) => { d.days[di].items[ai].accessibility = e.target.value; })} />
-              <input className="inp editable text-[12.5px]" value={a.alternative} placeholder="备选方案，如不适合久走可改为…"
-                onChange={(e) => mutate((d) => { d.days[di].items[ai].alternative = e.target.value; })} />
-              <input className="inp editable text-[12.5px]" value={a.earlyExit} placeholder="提前离开选项"
-                onChange={(e) => mutate((d) => { d.days[di].items[ai].earlyExit = e.target.value; })} />
+              <AutoGrowTextarea singleLine={false} className="inp editable text-[12.5px]" value={a.accessibility} placeholder="无障碍/行动不便提示"
+                onChange={(v) => mutate((d) => { d.days[di].items[ai].accessibility = v; })} />
+              <AutoGrowTextarea singleLine={false} className="inp editable text-[12.5px]" value={a.alternative} placeholder="备选方案，如不适合久走可改为…"
+                onChange={(v) => mutate((d) => { d.days[di].items[ai].alternative = v; })} />
+              <AutoGrowTextarea singleLine={false} className="inp editable text-[12.5px]" value={a.earlyExit} placeholder="提前离开选项"
+                onChange={(v) => mutate((d) => { d.days[di].items[ai].earlyExit = v; })} />
             </div>
             <LinkRows di={di} ai={ai} links={a.link} editUnlocked={editUnlocked} mutate={mutate} />
           </div>
@@ -279,7 +280,7 @@ function ItineraryStop({ a, index }: { a: Activity; index: number }) {
         </div>
         <div className="min-w-0 flex-1">
           <div className="flex items-start gap-2">
-            <div className="min-w-0 flex-1 line-clamp-3 print-unclamp">
+            <div className="min-w-0 flex-1 break-words">
               {a.x.trim()
                 ? <MarkdownText text={a.x} className="!font-bold !text-ink !text-[14.5px] !leading-snug" />
                 : <span className="text-muted">未命名行程</span>}
@@ -464,8 +465,8 @@ function DayCard({ d, i, total, collapsed, editUnlocked, mutate, mutateNoSave, d
               </select>
             ) : <span className={`pill border ${intensityClass(d.intensity)}`}>体力：{intensityLabel(d.intensity)}</span>}
             {editUnlocked ? (
-              <input className="inp editable flex-1 min-w-[180px]" value={d.steps} placeholder="步行时长/体力提示"
-                onChange={(e) => mutate((s) => { s.days[i].steps = e.target.value; })} />
+              <AutoGrowTextarea singleLine={false} className="inp editable flex-1 min-w-[180px]" value={d.steps} placeholder="步行时长/体力提示"
+                onChange={(v) => mutate((s) => { s.days[i].steps = v; })} />
             ) : d.steps ? <div className="rich-field flex-1 min-w-[180px]"><span className="rich-label">步行提示</span><MarkdownText text={d.steps} /></div> : null}
             {editUnlocked ? (
               <input

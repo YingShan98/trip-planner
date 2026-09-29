@@ -3,6 +3,7 @@ import { uid } from '../../state';
 import type { Mutate, TripState } from '../../types';
 import PackingModal from '../modals/PackingModal';
 import CategoryCombobox from '../CategoryCombobox';
+import AutoGrowTextarea from '../AutoGrowTextarea';
 
 const DEFAULT_CATEGORIES = ['日期与机票', '预约与订票', '证件与长者优惠', '交通与包车', '支付与人数', '出发前复核'];
 const FALLBACK_CATEGORY = '其他';
@@ -108,12 +109,12 @@ export default function Checklist({
                     />
                     {editUnlocked ? (
                       <>
-                        <input
+                        <AutoGrowTextarea
                           aria-label="事项内容"
                           className={`inp flex-1 min-w-0 text-[14px] py-1 ${x.done ? 'line-through text-muted' : ''}`}
                           value={x.text}
                           placeholder="事项内容"
-                          onChange={(e) => mutate((d) => { d.checklist[x.idx].text = e.target.value; })}
+                          onChange={(v) => mutate((d) => { d.checklist[x.idx].text = v; })}
                         />
                         <CategoryCombobox
                           ariaLabel={`「${x.text || '事项'}」的分类`}

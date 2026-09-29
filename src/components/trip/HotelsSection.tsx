@@ -3,6 +3,7 @@ import { defaultHotel } from '../../state';
 import type { Hotel, Mutate, TripState } from '../../types';
 import MarkdownText from '../MarkdownText';
 import CommentThread from './CommentThread';
+import AutoGrowTextarea from '../AutoGrowTextarea';
 
 function HotelCard({
   h, i, editUnlocked, mutate, state, authorName, printOnlyIndex, showDiscussionInPrint,
@@ -54,16 +55,16 @@ function HotelCard({
       </div>
 
       {/* Row 2: hotel name — full width, prominent */}
-      {editUnlocked ? <input
+      {editUnlocked ? <AutoGrowTextarea
           className="inp editable font-bold text-[15px]"
           value={h.name}
           placeholder="酒店名称"
-          onChange={(e) => mutate((d) => { d.hotels[i].name = e.target.value; })}
+          onChange={(v) => mutate((d) => { d.hotels[i].name = v; })}
         /> : <h3 className="font-serif font-bold text-[18px] text-jade-dark">{h.name}</h3>}
 
       {/* Row 3: address — always visible */}
       {editUnlocked
-        ? <input className="inp editable text-[13px]" value={h.addr} placeholder="地址 / 地铁站 / 区域" onChange={(e) => mutate((d) => { d.hotels[i].addr = e.target.value; })} />
+        ? <AutoGrowTextarea singleLine={false} className="inp editable text-[13px]" value={h.addr} placeholder="地址 / 地铁站 / 区域" onChange={(v) => mutate((d) => { d.hotels[i].addr = v; })} />
         : h.addr ? <div className="rich-field"><span className="rich-label">位置</span><MarkdownText text={h.addr} /></div> : null}
 
       {editUnlocked ? (
@@ -73,7 +74,7 @@ function HotelCard({
             {showMore ? '收起字段 ▴' : '更多字段 ▾'}
           </button>
           <div className={showMore ? 'flex flex-col gap-2.5' : 'hidden'}>
-            <input className="inp editable text-[13px]" value={h.warn} placeholder="注意事项" onChange={(e) => mutate((d) => { d.hotels[i].warn = e.target.value; })} />
+            <AutoGrowTextarea singleLine={false} className="inp editable text-[13px]" value={h.warn} placeholder="注意事项" onChange={(v) => mutate((d) => { d.hotels[i].warn = v; })} />
             <textarea className="inp editable min-h-[72px] resize-y text-[13px]" value={h.pointsText} placeholder="优点 / 缺点 / 适合原因" onChange={(e) => mutate((d) => { d.hotels[i].pointsText = e.target.value; })} />
             <textarea className="inp editable min-h-[52px] resize-y text-[13px]" value={h.notes} placeholder="讨论备注" onChange={(e) => mutate((d) => { d.hotels[i].notes = e.target.value; })} />
             <div className="pt-2 border-t border-dashed border-line">

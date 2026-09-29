@@ -3,6 +3,7 @@ import { defaultTransport } from '../../state';
 import { convertAmount, formatMoney, parseRate } from '../../lib/currency';
 import type { Mutate, TransportItem, TripState } from '../../types';
 import MarkdownText from '../MarkdownText';
+import AutoGrowTextarea from '../AutoGrowTextarea';
 
 function TransportCard({
   x, i, editUnlocked, mutate, home, foreign, rate, local, printOnlyIndex,
@@ -19,11 +20,11 @@ function TransportCard({
 
       {/* Row 1: type name + final-choice toggle + delete */}
       <div className="flex items-start gap-2 flex-wrap">
-        {editUnlocked ? <input
+        {editUnlocked ? <AutoGrowTextarea
             className="inp editable flex-1 font-bold text-[15px]"
             value={x.type}
             placeholder="交通方式 / 车型"
-            onChange={(e) => mutate((d) => { d.transport[i].type = e.target.value; })}
+            onChange={(v) => mutate((d) => { d.transport[i].type = v; })}
           /> : <h3 className="flex-1 font-serif font-bold text-[17px] text-jade-dark">{x.type}</h3>}
         {x.chosen && <span className="pill bg-jade-dark !text-white border-jade-dark">✓ 最终决定</span>}
         {editUnlocked && (
@@ -102,11 +103,11 @@ function TransportCard({
               placeholder="说明（路线、时间、安排等）"
               onChange={(e) => mutate((d) => { d.transport[i].description = e.target.value; })}
             />
-            <input
+            <AutoGrowTextarea singleLine={false}
               className="inp editable text-[13px]"
               value={x.price}
               placeholder="价格说明，如 / 天、/ 人"
-              onChange={(e) => mutate((d) => { d.transport[i].price = e.target.value; })}
+              onChange={(v) => mutate((d) => { d.transport[i].price = v; })}
             />
           </div>
         </>

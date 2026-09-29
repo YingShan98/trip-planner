@@ -4,6 +4,7 @@ import { uid } from '../../state';
 import { confirmDialog } from '../../lib/confirm';
 import type { Mutate, PackingItem, TripState } from '../../types';
 import CategoryCombobox from '../CategoryCombobox';
+import AutoGrowTextarea from '../AutoGrowTextarea';
 
 const CATEGORIES = ['衣物', '洗漱用品', '证件', '电子产品', '药品', '其他'] as const;
 const FALLBACK_CATEGORY = '其他';
@@ -219,12 +220,12 @@ export default function PackingModal({
                     />
                     {editUnlocked ? (
                       <>
-                        <input
+                        <AutoGrowTextarea
                           aria-label="物品名称"
                           className={`inp flex-1 min-w-0 text-[13.5px] py-1 ${x.done ? 'line-through text-muted' : ''}`}
                           value={x.text}
                           placeholder="物品名称"
-                          onChange={(e) => mutate((d) => { d.packing[x.idx].text = e.target.value; })}
+                          onChange={(v) => mutate((d) => { d.packing[x.idx].text = v; })}
                         />
                         <CategoryCombobox
                           ariaLabel={`「${x.text || '物品'}」的分类`}
