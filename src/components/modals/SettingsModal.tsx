@@ -6,6 +6,7 @@ import { revokeShares, setTripEditPassword, type TripMeta } from '../../lib/trip
 import { suggestDestinationImage } from '../../lib/destinationImage';
 import { fetchExchangeRate } from '../../lib/exchangeRate';
 import Modal from '../Modal';
+import { parseTravelerCount } from '../../state';
 
 export default function SettingsModal({ trip, isLocal, onClose, onSaved }: {
   trip: TripMeta;
@@ -19,6 +20,7 @@ export default function SettingsModal({ trip, isLocal, onClose, onSaved }: {
   const [currency, setCurrency] = useState(trip.home_currency);
   const [foreignCurrency, setForeignCurrency] = useState(trip.foreign_currency || '');
   const [exchangeRate, setExchangeRate] = useState(String(trip.exchange_rate ?? ''));
+  const [travelers, setTravelers] = useState(String(trip.traveler_count ?? ''));
   const [start, setStart] = useState(trip.start_date || '');
   const [end, setEnd] = useState(trip.end_date || '');
   const [description, setDescription] = useState(trip.description);
@@ -53,14 +55,16 @@ export default function SettingsModal({ trip, isLocal, onClose, onSaved }: {
 
   const save = async () => {
     if (!sb) return;
+    if (travelers.trim() && parseTravelerCount(travelers.trim()) === null) { toast('同行人数请填写 1 或以上的整数'); return; }
+    const travelerCount = parseTravelerCount(travelers.trim());
     const { error } = await sb.from('trips').update({
       title: title.trim(), destination: destination.trim(), home_currency: currency.trim() || 'MYR',
       foreign_currency: foreignCurrency.trim(), exchange_rate: exchangeRate === '' ? null : Number(exchangeRate),
       start_date: start || null, end_date: end || null, description, cover_image_url: coverImageUrl.trim() || null,
-      variant_label: variantLabel.trim(), audience_label: audienceLabel.trim(),
+      variant_label: variantLabel.trim(), audience_label: audienceLabel.trim(), traveler_count: travelerCount,
     }).eq('id', trip.id);
     if (error) { toast(`保存失败：${error.message}`); return; }
-    onSaved({ title: title.trim(), destination: destination.trim(), home_currency: currency.trim() || 'MYR', foreign_currency: foreignCurrency.trim(), exchange_rate: exchangeRate === '' ? null : Number(exchangeRate), start_date: start || null, end_date: end || null, description, cover_image_url: coverImageUrl.trim() || null, variant_label: variantLabel.trim(), audience_label: audienceLabel.trim() });
+    onSaved({ title: title.trim(), destination: destination.trim(), home_currency: currency.trim() || 'MYR', foreign_currency: foreignCurrency.trim(), exchange_rate: exchangeRate === '' ? null : Number(exchangeRate), start_date: start || null, end_date: end || null, description, cover_image_url: coverImageUrl.trim() || null, variant_label: variantLabel.trim(), audience_label: audienceLabel.trim(), traveler_count: travelerCount });
     toast('旅行设置已更新');
     onClose();
   };
@@ -91,6 +95,7 @@ export default function SettingsModal({ trip, isLocal, onClose, onSaved }: {
         <div className="field col-span-2"><label>旅行名称</label><input className="inp" value={title} onChange={(e) => setTitle(e.target.value)} /></div>
         <div className="field"><label>目的地</label><input className="inp" value={destination} onChange={(e) => setDestination(e.target.value)} /></div>
         <div className="field"><label>本地货币</label><input className="inp" value={currency} onChange={(e) => setCurrency(e.target.value)} /></div>
+        <div className="field"><label>同行人数</label><input className="inp" type="number" min="1" step="1" placeholder="例如 4" value={travelers} onChange={(e) => setTravelers(e.target.value)} /></div>
         <div className="field"><label>开始日期</label><input className="inp" type="date" value={start} onChange={(e) => setStart(e.target.value)} /></div>
         <div className="field"><label>结束日期</label><input className="inp" type="date" value={end} onChange={(e) => setEnd(e.target.value)} /></div>
         {!isLocal && <div className="field"><label>外币</label><input className="inp" placeholder="例如 CNY" value={foreignCurrency} onChange={(e) => setForeignCurrency(e.target.value)} /></div>}

@@ -22,6 +22,12 @@ export function blankState(): TripState {
   };
 }
 
+/** A usable traveler count (a whole number ≥ 1), or null if unset/invalid. */
+export function parseTravelerCount(v: number | string | null | undefined): number | null {
+  const n = Number(v);
+  return v !== '' && v !== null && v !== undefined && Number.isInteger(n) && n >= 1 ? n : null;
+}
+
 export function defaultDay(n: number): Day {
   return { n, title: `Day ${n}`, intensity: 'light', steps: '', mapUrl: '', items: [], notes: '' };
 }

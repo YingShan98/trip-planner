@@ -2,7 +2,7 @@ import { useRef, useState } from 'react';
 import type { ChangeEvent } from 'react';
 import { toast } from '../../lib/toast';
 import { downloadJSON } from '../../lib/download';
-import { blankState, templateState } from '../../state';
+import { blankState, parseTravelerCount, templateState } from '../../state';
 import { parseTripJson } from '../../lib/tripJson';
 import { createTrip } from '../../lib/tripApi';
 import { suggestDestinationImage } from '../../lib/destinationImage';
@@ -24,6 +24,7 @@ export default function NewTripModal({ onClose, onCreated }: {
   const [title, setTitle] = useState('');
   const [destination, setDestination] = useState('');
   const [currency, setCurrency] = useState('MYR');
+  const [travelers, setTravelers] = useState('');
   const [isLocal, setIsLocal] = useState(false);
   const [foreignCurrency, setForeignCurrency] = useState('');
   const [exchangeRate, setExchangeRate] = useState('');
@@ -58,6 +59,7 @@ export default function NewTripModal({ onClose, onCreated }: {
     setIsLocal(data.isLocal);
     setForeignCurrency(data.foreignCurrency);
     setExchangeRate(String(data.exchangeRate ?? ''));
+    setTravelers(String(data.travelers ?? ''));
     setImportedFrom(source);
     if (meta.title) setTitle(meta.title);
     if (meta.destination) setDestination(meta.destination);
@@ -90,6 +92,7 @@ export default function NewTripModal({ onClose, onCreated }: {
     setIsLocal(false);
     setForeignCurrency('');
     setExchangeRate('');
+    setTravelers('');
   };
 
   const fetchImage = async () => {
@@ -117,6 +120,7 @@ export default function NewTripModal({ onClose, onCreated }: {
     const s = structuredClone(importedData || blankState());
     s.foreignCurrency = foreignCurrency.trim().toUpperCase();
     s.exchangeRate = exchangeRate.trim();
+    s.travelers = parseTravelerCount(travelers.trim()) ?? '';
     if (isLocal) convertToLocalTrip(s);
     else s.isLocal = false;
     return s;
@@ -211,6 +215,7 @@ export default function NewTripModal({ onClose, onCreated }: {
         </div>
         <div className="field"><label>目的地</label><input className="inp" placeholder="广州 / Seoul / Tokyo" value={destination} onChange={(e) => setDestination(e.target.value)} /></div>
         <div className="field"><label>本地货币</label><input className="inp" value={currency} onChange={(e) => setCurrency(e.target.value)} /></div>
+        <div className="field"><label>同行人数</label><input className="inp" type="number" min="1" step="1" placeholder="例如 4" value={travelers} onChange={(e) => setTravelers(e.target.value)} /></div>
         <div className="field sm:col-span-2">
           <label>旅行类型</label>
           <div className="flex gap-1.5 p-1 bg-surface-2 rounded-lg w-fit" role="radiogroup" aria-label="旅行类型">

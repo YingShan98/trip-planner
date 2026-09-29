@@ -846,6 +846,7 @@ export default function TripView({
             mutateNoSave((d) => {
               if (changes.foreign_currency !== undefined) d.foreignCurrency = changes.foreign_currency;
               if (changes.exchange_rate !== undefined) d.exchangeRate = changes.exchange_rate ?? '';
+              if (changes.traveler_count !== undefined) d.travelers = changes.traveler_count ?? '';
             });
           }}
         />

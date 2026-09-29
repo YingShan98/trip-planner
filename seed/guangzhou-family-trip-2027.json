@@ -1097,6 +1097,8 @@
     ],
     "collapsed": {},
     "foreignCurrency": "CNY",
-    "exchangeRate": 0.61
+    "exchangeRate": 0.61,
+    "isLocal": false,
+    "travelers": ""
   }
 }

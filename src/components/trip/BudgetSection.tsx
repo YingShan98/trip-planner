@@ -38,12 +38,10 @@ export default function BudgetSection({
             <strong className="text-[18px] text-jade-dark">{perPerson !== null ? formatMoney(perPerson, home) : '未设置人数'}</strong>
           </div>
         </div>
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-2" title="同行人数在「旅行设置」中修改">
           <span className="text-[12px] font-semibold text-muted whitespace-nowrap">同行人数</span>
-          {editUnlocked ? (
-            <input className="inp editable w-[70px] text-center" type="number" min="1" step="1" value={state.travelers}
-              placeholder="人数" onChange={(e) => mutate((d) => { d.travelers = e.target.value; })} />
-          ) : <span className="pill">{travelers > 0 ? `${travelers} 人` : '未设置'}</span>}
+          <span className="pill">{travelers > 0 ? `${travelers} 人` : '未设置'}</span>
+          {editUnlocked && <span className="text-[11.5px] text-muted edit-only">在「旅行设置」中修改</span>}
         </div>
       </div>
 
