@@ -9,7 +9,7 @@ import { downloadJSON } from '../../lib/download';
 import { createShare, deleteTrip, getTripRole, loadSharedTrip, loadTrip, saveSharedTrip, saveTrip, SaveConflictError, updateTripMeta, verifyEditPassword, type TripMeta } from '../../lib/tripApi';
 import { ensureGuestSession, getExistingGuestUser, getTripEditEvents, isAnonymousUser, setGuestName, type TripEditEvent } from '../../lib/guestAuth';
 import type { TripState } from '../../types';
-import { convertAmount, formatMoney, parseRate } from '../../lib/currency';
+import { convertAmount, convertToLocalTrip, formatMoney, hasForeignAmounts, parseRate } from '../../lib/currency';
 import Dashboard from './Dashboard';
 import CollapsibleSection from './CollapsibleSection';
 import Checklist from './Checklist';
@@ -838,16 +838,32 @@ export default function TripView({
         <SettingsModal
           trip={currentTrip}
           isLocal={state.isLocal}
+          hasForeignAmounts={hasForeignAmounts(state)}
           onClose={() => setShowSettings(false)}
           onSaved={(changes) => {
             setCurrentTrip((prev) => (prev ? { ...prev, ...changes } : prev));
-            // Settings writes the trips row directly; mirror its currency fields into the in-memory
-            // state too, or the next content save would write the old values back.
-            mutateNoSave((d) => {
+            // Settings writes the trips row directly; mirror its fields into the in-memory state too,
+            // or the next content save would write the old values back.
+            const sync = (d: TripState) => {
               if (changes.foreign_currency !== undefined) d.foreignCurrency = changes.foreign_currency;
               if (changes.exchange_rate !== undefined) d.exchangeRate = changes.exchange_rate ?? '';
               if (changes.traveler_count !== undefined) d.travelers = changes.traveler_count ?? '';
-            });
+              if (changes.is_local === false) d.isLocal = false;
+              if (changes.is_local === true && !d.isLocal) convertToLocalTrip(d);
+            };
+            const current = stateRef.current;
+            // Switching to local converts foreign-currency amounts, which live in the trip content, not
+            // the trips row — so that part still needs a content save: through the save button while
+            // editing (alongside the other unsaved edits), otherwise right away.
+            if (current && changes.is_local === true && !current.isLocal && hasForeignAmounts(current)) {
+              if (editUnlockedRef.current) { mutate(sync); return; }
+              const next = structuredClone(current);
+              sync(next);
+              setState(next);
+              quickSave(next);
+              return;
+            }
+            mutateNoSave(sync);
           }}
         />
       )}

@@ -8,16 +8,19 @@ import { fetchExchangeRate } from '../../lib/exchangeRate';
 import Modal from '../Modal';
 import { parseTravelerCount } from '../../state';
 
-export default function SettingsModal({ trip, isLocal, onClose, onSaved }: {
+export default function SettingsModal({ trip, isLocal: initialIsLocal, hasForeignAmounts, onClose, onSaved }: {
   trip: TripMeta;
   /** Local trips have no foreign currency, so its fields are hidden. */
   isLocal: boolean;
+  /** Whether any transport/budget amount is in the foreign currency (converted when switching to local). */
+  hasForeignAmounts: boolean;
   onClose: () => void;
   onSaved: (changes: Partial<TripMeta>) => void;
 }) {
   const [title, setTitle] = useState(trip.title);
   const [destination, setDestination] = useState(trip.destination);
   const [currency, setCurrency] = useState(trip.home_currency);
+  const [isLocal, setIsLocal] = useState(initialIsLocal);
   const [foreignCurrency, setForeignCurrency] = useState(trip.foreign_currency || '');
   const [exchangeRate, setExchangeRate] = useState(String(trip.exchange_rate ?? ''));
   const [travelers, setTravelers] = useState(String(trip.traveler_count ?? ''));
@@ -57,14 +60,20 @@ export default function SettingsModal({ trip, isLocal, onClose, onSaved }: {
     if (!sb) return;
     if (travelers.trim() && parseTravelerCount(travelers.trim()) === null) { toast('同行人数请填写 1 或以上的整数'); return; }
     const travelerCount = parseTravelerCount(travelers.trim());
+    if (isLocal && !initialIsLocal && hasForeignAmounts && !await confirmDialog(
+      Number(exchangeRate) > 0
+        ? `交通和预算中以 ${foreignCurrency.trim() || '外币'} 填写的金额，将按汇率 ${exchangeRate} 换算成 ${currency.trim() || 'MYR'}。确定改为本地旅行？`
+        : `交通和预算中以外币填写的金额会直接改标为 ${currency.trim() || 'MYR'}（没有汇率，数值不换算）。确定改为本地旅行？`,
+      { title: '改为本地旅行', confirmLabel: '改为本地旅行' },
+    )) return;
     const { error } = await sb.from('trips').update({
       title: title.trim(), destination: destination.trim(), home_currency: currency.trim() || 'MYR',
       foreign_currency: foreignCurrency.trim(), exchange_rate: exchangeRate === '' ? null : Number(exchangeRate),
       start_date: start || null, end_date: end || null, description, cover_image_url: coverImageUrl.trim() || null,
-      variant_label: variantLabel.trim(), audience_label: audienceLabel.trim(), traveler_count: travelerCount,
+      variant_label: variantLabel.trim(), audience_label: audienceLabel.trim(), traveler_count: travelerCount, is_local: isLocal,
     }).eq('id', trip.id);
     if (error) { toast(`保存失败：${error.message}`); return; }
-    onSaved({ title: title.trim(), destination: destination.trim(), home_currency: currency.trim() || 'MYR', foreign_currency: foreignCurrency.trim(), exchange_rate: exchangeRate === '' ? null : Number(exchangeRate), start_date: start || null, end_date: end || null, description, cover_image_url: coverImageUrl.trim() || null, variant_label: variantLabel.trim(), audience_label: audienceLabel.trim(), traveler_count: travelerCount });
+    onSaved({ title: title.trim(), destination: destination.trim(), home_currency: currency.trim() || 'MYR', foreign_currency: foreignCurrency.trim(), exchange_rate: exchangeRate === '' ? null : Number(exchangeRate), start_date: start || null, end_date: end || null, description, cover_image_url: coverImageUrl.trim() || null, variant_label: variantLabel.trim(), audience_label: audienceLabel.trim(), traveler_count: travelerCount, is_local: isLocal });
     toast('旅行设置已更新');
     onClose();
   };
@@ -98,6 +107,24 @@ export default function SettingsModal({ trip, isLocal, onClose, onSaved }: {
         <div className="field"><label>同行人数</label><input className="inp" type="number" min="1" step="1" placeholder="例如 4" value={travelers} onChange={(e) => setTravelers(e.target.value)} /></div>
         <div className="field"><label>开始日期</label><input className="inp" type="date" value={start} onChange={(e) => setStart(e.target.value)} /></div>
         <div className="field"><label>结束日期</label><input className="inp" type="date" value={end} onChange={(e) => setEnd(e.target.value)} /></div>
+        <div className="field col-span-2">
+          <label>旅行类型</label>
+          <div className="flex gap-1.5 p-1 bg-surface-2 rounded-lg w-fit" role="radiogroup" aria-label="旅行类型">
+            {([[false, '✈️ 出国旅行'], [true, '🏠 本地旅行']] as const).map(([local, label]) => (
+              <button
+                key={label}
+                type="button"
+                role="radio"
+                aria-checked={isLocal === local}
+                className={`btn-mini !border-transparent ${isLocal === local ? 'bg-surface shadow-xs !text-jade-dark font-bold' : ''}`}
+                onClick={() => setIsLocal(local)}
+              >
+                {label}
+              </button>
+            ))}
+          </div>
+          <span className="text-muted text-[11.5px]">{isLocal ? '本地旅行不显示货币换算，所有金额都以本地货币计算。' : '出国旅行可设置目的地货币和汇率，预算与交通会显示双币金额。'}</span>
+        </div>
         {!isLocal && <div className="field"><label>外币</label><input className="inp" placeholder="例如 CNY" value={foreignCurrency} onChange={(e) => setForeignCurrency(e.target.value)} /></div>}
         {!isLocal && <div className="field">
           <label>汇率（1 外币 = 本地币）</label>
