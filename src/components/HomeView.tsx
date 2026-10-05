@@ -16,6 +16,7 @@ export default function HomeView({
   const [trips, setTrips] = useState<TripListRow[]>([]);
   const [search, setSearch] = useState('');
   const [sortByDeparture, setSortByDeparture] = useState(false);
+  const [showPast, setShowPast] = useState(false);
 
   const loadTrips = async () => {
     if (!sb || !isAuthenticated) { setTrips([]); return; }
@@ -64,6 +65,73 @@ export default function HomeView({
         return 0;
       })
     : visibleTrips;
+  // A trip is "past" once its last day (end_date, or start_date if no end) is over.
+  const activeTrips = sortedTrips.filter((t) => tripCountdown(t.start_date, t.end_date).phase !== 'past');
+  const pastTrips = sortedTrips.filter((t) => tripCountdown(t.start_date, t.end_date).phase === 'past');
+  // Expand automatically while searching so matching past trips aren't hidden.
+  const pastExpanded = showPast || q !== '';
+
+  const renderCard = (t: TripListRow) => (
+    <article
+      key={t.slug}
+      className="bg-surface border border-line rounded-lg overflow-hidden shadow-sm flex flex-col transition-all duration-150 hover:shadow-md hover:-translate-y-0.5"
+    >
+      {/* cover image, or coloured stripe placeholder */}
+      {t.cover_image_url ? (
+        <img
+          src={t.cover_image_url}
+          alt=""
+          className="h-32 w-full object-cover bg-surface-2"
+          onError={(e) => { (e.currentTarget as HTMLImageElement).style.display = 'none'; }}
+        />
+      ) : (
+        <div className="h-1 bg-gradient-to-r from-jade to-jade-mid" />
+      )}
+  
+      <div className="p-5 flex-1 flex flex-col gap-2.5">
+        <div>
+          <h3 className="font-serif text-[17px] font-bold text-jade-dark leading-[1.3] mb-2">{t.title}</h3>
+          <div className="flex flex-wrap gap-1.5">
+            {t.variant_label && <span className="pill bg-jade-tint border-jade-tint text-jade-dark font-semibold">🏷️ {t.variant_label}</span>}
+            <span className="pill">📍 {t.destination || '目的地待定'}</span>
+            <span className="pill">📅 {dateRange(t)}</span>
+            <span className="pill">💰 {t.home_currency || 'MYR'}</span>
+            {(tripCountdown(t.start_date, t.end_date).phase === 'upcoming' || tripCountdown(t.start_date, t.end_date).phase === 'ongoing') && (
+              <span className="pill bg-jade-tint border-jade-tint text-jade-dark font-semibold">🗓️ {tripCountdownLabel(t.start_date, t.end_date)}</span>
+            )}
+          </div>
+        </div>
+        {t.audience_label && (
+          <p className="text-muted text-[12px] leading-[1.5] m-0">👥 适合：{t.audience_label}</p>
+        )}
+        {t.description && (
+          <p className="text-muted text-[13px] leading-[1.55] flex-1">{t.description}</p>
+        )}
+      </div>
+  
+      {/* action footer */}
+      <div className="flex border-t border-line">
+        {isAuthenticated && <button
+          className="flex-1 py-2.5 px-2 text-[13px] font-bold text-jade bg-surface-2 border-r border-line transition-colors hover:bg-jade-tint"
+          onClick={() => onOpenTrip(t.slug)}
+        >
+          进入旅行
+        </button>}
+        {isAuthenticated && <button
+          className="flex-1 py-2.5 px-2 text-[13px] text-muted transition-colors hover:bg-surface-3 hover:text-ink-2 border-r border-line"
+          onClick={() => handleShare(t.slug)}
+        >
+          复制链接
+        </button>}
+        {isAuthenticated && <button
+          className="flex-1 py-2.5 px-2 text-[13px] text-muted transition-colors hover:bg-danger-tint hover:text-danger"
+          onClick={() => handleDelete(t.slug)}
+        >
+          删除
+        </button>}
+      </div>
+    </article>
+  );
 
   return (
     <main className="max-w-[1200px] mx-auto">
@@ -124,69 +192,35 @@ export default function HomeView({
         ) : sortedTrips.length === 0 ? (
           <div className="empty-state">没有找到匹配「{search}」的旅行。</div>
         ) : (
-          <div className="grid grid-cols-[repeat(auto-fill,minmax(280px,1fr))] gap-4">
-            {sortedTrips.map((t) => (
-              <article
-                key={t.slug}
-                className="bg-surface border border-line rounded-lg overflow-hidden shadow-sm flex flex-col transition-all duration-150 hover:shadow-md hover:-translate-y-0.5"
-              >
-                {/* cover image, or coloured stripe placeholder */}
-                {t.cover_image_url ? (
-                  <img
-                    src={t.cover_image_url}
-                    alt=""
-                    className="h-32 w-full object-cover bg-surface-2"
-                    onError={(e) => { (e.currentTarget as HTMLImageElement).style.display = 'none'; }}
-                  />
-                ) : (
-                  <div className="h-1 bg-gradient-to-r from-jade to-jade-mid" />
-                )}
+          <>
+            {activeTrips.length > 0 ? (
+              <div className="grid grid-cols-[repeat(auto-fill,minmax(280px,1fr))] gap-4">
+                {activeTrips.map(renderCard)}
+              </div>
+            ) : (
+              <div className="empty-state">{q ? `没有找到匹配「${search}」的进行中或即将出发的旅行。` : '没有进行中或即将出发的旅行。'}</div>
+            )}
 
-                <div className="p-5 flex-1 flex flex-col gap-2.5">
-                  <div>
-                    <h3 className="font-serif text-[17px] font-bold text-jade-dark leading-[1.3] mb-2">{t.title}</h3>
-                    <div className="flex flex-wrap gap-1.5">
-                      {t.variant_label && <span className="pill bg-jade-tint border-jade-tint text-jade-dark font-semibold">🏷️ {t.variant_label}</span>}
-                      <span className="pill">📍 {t.destination || '目的地待定'}</span>
-                      <span className="pill">📅 {dateRange(t)}</span>
-                      <span className="pill">💰 {t.home_currency || 'MYR'}</span>
-                      {(tripCountdown(t.start_date, t.end_date).phase === 'upcoming' || tripCountdown(t.start_date, t.end_date).phase === 'ongoing') && (
-                        <span className="pill bg-jade-tint border-jade-tint text-jade-dark font-semibold">🗓️ {tripCountdownLabel(t.start_date, t.end_date)}</span>
-                      )}
-                    </div>
+            {pastTrips.length > 0 && (
+              <div className="mt-8">
+                <button
+                  className="flex items-center gap-2 w-full text-left pb-2.5 mb-4 border-b border-line text-muted hover:text-ink-2 transition-colors"
+                  onClick={() => setShowPast((v) => !v)}
+                  aria-expanded={pastExpanded}
+                  disabled={q !== ''}
+                >
+                  <span className="text-[12px]">{pastExpanded ? '▼' : '▶'}</span>
+                  <span className="font-serif text-[16px] font-bold">已结束的旅行</span>
+                  <span className="text-[13px]">（{pastTrips.length}）</span>
+                </button>
+                {pastExpanded && (
+                  <div className="grid grid-cols-[repeat(auto-fill,minmax(280px,1fr))] gap-4 opacity-80">
+                    {pastTrips.map(renderCard)}
                   </div>
-                  {t.audience_label && (
-                    <p className="text-muted text-[12px] leading-[1.5] m-0">👥 适合：{t.audience_label}</p>
-                  )}
-                  {t.description && (
-                    <p className="text-muted text-[13px] leading-[1.55] flex-1">{t.description}</p>
-                  )}
-                </div>
-
-                {/* action footer */}
-                <div className="flex border-t border-line">
-                  {isAuthenticated && <button
-                    className="flex-1 py-2.5 px-2 text-[13px] font-bold text-jade bg-surface-2 border-r border-line transition-colors hover:bg-jade-tint"
-                    onClick={() => onOpenTrip(t.slug)}
-                  >
-                    进入旅行
-                  </button>}
-                  {isAuthenticated && <button
-                    className="flex-1 py-2.5 px-2 text-[13px] text-muted transition-colors hover:bg-surface-3 hover:text-ink-2 border-r border-line"
-                    onClick={() => handleShare(t.slug)}
-                  >
-                    复制链接
-                  </button>}
-                  {isAuthenticated && <button
-                    className="flex-1 py-2.5 px-2 text-[13px] text-muted transition-colors hover:bg-danger-tint hover:text-danger"
-                    onClick={() => handleDelete(t.slug)}
-                  >
-                    删除
-                  </button>}
-                </div>
-              </article>
-            ))}
-          </div>
+                )}
+              </div>
+            )}
+          </>
         )}
       </section>
     </main>
