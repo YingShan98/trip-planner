@@ -251,6 +251,8 @@
 
 /* Itinerary: `#day-N` anchors land below the sticky header + trip nav + day pill bar; legs draw the dotted route line. */
 .day-card { scroll-margin-top: 180px; }
+/* Phones: only the topbar (68px) and the day pill bar are pinned — the trip nav scrolls away. */
+@media (max-width: 639.98px) { .day-card { scroll-margin-top: 132px; } }
 .itinerary-leg { position: relative; }
 .itinerary-leg::before { content: ''; position: absolute; left: 25px; top: 0; bottom: 0; border-left: 2px dotted var(--color-line-strong); }
 .day-tabs { scrollbar-width: none; }

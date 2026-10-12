@@ -3,7 +3,7 @@ import type { RealtimeChannel } from '@supabase/supabase-js';
 import { sb } from '../../lib/supabase';
 import { toast } from '../../lib/toast';
 import { confirmDialog } from '../../lib/confirm';
-import { dateRange, dayDate, formatDateWithWeekday, tripCountdownLabel } from '../../lib/format';
+import { dateRange, dayDate, formatDateWithWeekday, todayDayIndex, tripCountdownLabel } from '../../lib/format';
 import { fetchWeather, type WeatherResult } from '../../lib/weather';
 import { downloadJSON } from '../../lib/download';
 import { createShare, deleteTrip, getTripRole, loadSharedTrip, loadTrip, saveSharedTrip, saveTrip, SaveConflictError, updateTripMeta, verifyEditPassword, type TripMeta } from '../../lib/tripApi';
@@ -67,6 +67,8 @@ export default function TripView({
   const [shareMode, setShareMode] = useState<'view' | 'edit'>('view');
   const [shareExpiry, setShareExpiry] = useState('7');
   const [showTop, setShowTop] = useState(false);
+  const [showMenu, setShowMenu] = useState(false);
+  const menuRef = useRef<HTMLDivElement>(null);
   const [showGuestIdentity, setShowGuestIdentity] = useState(false);
   const [guestName, setGuestNameState] = useState(() => localStorage.getItem(`trip-guest-name:${shareToken || ''}`) || '');
   const [requiresEditPassword, setRequiresEditPassword] = useState(false);
@@ -389,6 +391,15 @@ export default function TripView({
   };
 
   useEffect(() => {
+    if (!showMenu) return;
+    const onPointerDown = (e: PointerEvent) => { if (!menuRef.current?.contains(e.target as Node)) setShowMenu(false); };
+    const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') setShowMenu(false); };
+    document.addEventListener('pointerdown', onPointerDown);
+    document.addEventListener('keydown', onKey);
+    return () => { document.removeEventListener('pointerdown', onPointerDown); document.removeEventListener('keydown', onKey); };
+  }, [showMenu]);
+
+  useEffect(() => {
     const onScroll = () => setShowTop(window.scrollY > 600);
     window.addEventListener('scroll', onScroll, { passive: true });
     return () => window.removeEventListener('scroll', onScroll);
@@ -430,8 +441,10 @@ export default function TripView({
     requestAnimationFrame(() => requestAnimationFrame(() => {
       const el = document.getElementById(id);
       const nav = document.querySelector<HTMLElement>('.trip-nav');
+      const topbar = document.querySelector<HTMLElement>('#app > header');
       if (!el) return;
-      const offset = (nav?.getBoundingClientRect().bottom ?? 68) + 12;
+      const navBottom = nav && getComputedStyle(nav).position === 'sticky' ? (parseFloat(getComputedStyle(nav).top) || 0) + nav.offsetHeight : 0;
+      const offset = Math.max(topbar?.offsetHeight ?? 68, navBottom) + 12;
       const top = el.getBoundingClientRect().top + window.scrollY - offset;
       window.scrollTo({ top, behavior: 'smooth' });
     }));
@@ -541,6 +554,7 @@ export default function TripView({
   const hideCurrency = state.isLocal && !editUnlocked;
   const navSections = SECTIONS.filter(([id]) => !(id === 'currency' && hideCurrency));
   const total = state.days.reduce((a, d) => a + d.items.length, 0);
+  const todayIndex = todayDayIndex(currentTrip.start_date, state.days.length);
   const done  = state.checklist.filter((x) => x.done).length;
 
   /* One-line summaries shown on each collapsed accordion header. */
@@ -584,32 +598,35 @@ export default function TripView({
       )}
 
       {/* ── Trip hero ── */}
-      <header className="trip-hero relative overflow-hidden bg-gradient-to-br from-jade-dark to-jade text-white content-gutter py-8">
-        {currentTrip.cover_image_url && (
-          <img
-            src={currentTrip.cover_image_url}
-            alt=""
-            className="absolute inset-0 w-full h-full object-cover opacity-40"
-            onError={(e) => { (e.currentTarget as HTMLImageElement).style.display = 'none'; }}
-          />
-        )}
-        <div className="absolute inset-0 bg-[radial-gradient(circle_at_90%_10%,rgba(255,255,255,0.07)_0%,transparent_50%)]" />
-        <div className="absolute inset-0 bg-gradient-to-t from-jade-dark/70 via-transparent to-transparent" />
-        <div className="relative z-10">
+      <header className="trip-hero relative bg-gradient-to-br from-jade-dark to-jade text-white content-gutter py-5 sm:py-8">
+        <div className="absolute inset-0 overflow-hidden">
+          {currentTrip.cover_image_url && (
+            <img
+              src={currentTrip.cover_image_url}
+              alt=""
+              className="absolute inset-0 w-full h-full object-cover opacity-40"
+              onError={(e) => { (e.currentTarget as HTMLImageElement).style.display = 'none'; }}
+            />
+          )}
+          <div className="absolute inset-0 bg-[radial-gradient(circle_at_90%_10%,rgba(255,255,255,0.07)_0%,transparent_50%)]" />
+          <div className="absolute inset-0 bg-gradient-to-t from-jade-dark/70 via-transparent to-transparent" />
+        </div>
+        {/* Raised above the sticky trip nav (z-40) only while the menu is open, so the menu isn't drawn under it. */}
+        <div className={`relative ${showMenu ? 'z-[45]' : 'z-10'}`}>
           <button
-            className="no-print btn mb-5 bg-white/10 border-white/22 text-white/88 text-[13px] px-3.5 py-1.5 hover:bg-white/18 hover:border-white/45 hover:text-white hover:-translate-x-0.5"
+            className="no-print btn mb-3 sm:mb-5 bg-white/10 border-white/22 text-white/88 text-[13px] px-3.5 py-1.5 hover:bg-white/18 hover:border-white/45 hover:text-white hover:-translate-x-0.5"
             onClick={leaveTrip}
           >
             ← 我的旅行
           </button>
 
-          <p className="text-white/60 text-[11px] font-bold tracking-[0.16em] uppercase mb-2">TRIP WORKSPACE</p>
-          <h1 className="font-serif text-[32px] font-bold mb-1.5 leading-[1.25]">{currentTrip.title}</h1>
+          <p className="hidden sm:block text-white/60 text-[11px] font-bold tracking-[0.16em] uppercase mb-2">TRIP WORKSPACE</p>
+          <h1 className="font-serif text-[24px] sm:text-[32px] font-bold mb-1.5 leading-[1.25]">{currentTrip.title}</h1>
           <p className="text-white/72 text-[14.5px] m-0">
             {currentTrip.destination || '目的地待定'} · {dateRange(currentTrip)}
           </p>
 
-          <div className="flex flex-wrap gap-2 mt-4">
+          <div className="flex flex-wrap gap-2 mt-3 sm:mt-4">
             {currentTrip.variant_label && (
               <span className="pill bg-white/13 border-white/22 text-white/90 hero-pill">🏷️ {currentTrip.variant_label}</span>
             )}
@@ -621,7 +638,7 @@ export default function TripView({
                 🗓️ {tripCountdownLabel(currentTrip.start_date, currentTrip.end_date)}
               </span>
             )}
-            <span className="pill bg-white/13 border-white/22 text-white/90 hero-pill">
+            <span className="pill hidden sm:inline-flex bg-white/13 border-white/22 text-white/90 hero-pill">
               💰 {currentTrip.home_currency || 'MYR'}
               {state.isLocal
                 ? ' · 本地旅行'
@@ -629,11 +646,11 @@ export default function TripView({
                 ? ` · ${state.foreignCurrency}${parseRate(state.exchangeRate) ? ` @ ${parseRate(state.exchangeRate)}` : ' (未设汇率)'}`
                 : ''}
             </span>
-            <span className="no-print pill bg-white/13 border-white/22 text-white/90 hero-pill">
+            <span className="no-print pill hidden sm:inline-flex bg-white/13 border-white/22 text-white/90 hero-pill">
               {editUnlocked ? '✏️ 可编辑' : shareToken ? '🔐 安全分享' : readOnly ? '🔗 只读查看' : '👀 只读查看'}
             </span>
             {!readOnly && !shareToken && (role === 'owner' || role === 'editor') && (
-              <span className="no-print pill bg-white/13 border-white/22 text-white/90 hero-pill text-[11.5px]">
+              <span className="no-print pill hidden sm:inline-flex bg-white/13 border-white/22 text-white/90 hero-pill text-[11.5px]">
                 {editUnlocked ? '编辑模式' : syncStatus}
               </span>
             )}
@@ -647,11 +664,12 @@ export default function TripView({
             )}
           </div>
 
-          {/* Toolbar */}
-          <div className="no-print flex flex-wrap items-center gap-2 mt-5 pt-5 border-t border-white/14">
+          {/* Toolbar: the everyday actions up front, the rest folded into ⋯ */}
+          <div className="no-print flex flex-wrap items-center gap-2 mt-4 sm:mt-5 pt-4 sm:pt-5 border-t border-white/14">
             {canToggleEdit && (
+              // Phones already have the floating edit button in the corner.
               <button
-                className={`btn text-[13px] px-3.5 py-2 transition-all duration-150 ${
+                className={`btn hidden sm:inline-flex text-[13px] px-3.5 py-2 transition-all duration-150 ${
                   editUnlocked
                     ? 'bg-white/10 border-white/20 text-white/88 hover:bg-white/20 hover:border-white/40 hover:text-white'
                     : 'bg-white border-white text-jade-dark font-bold hover:bg-white/90 hover:-translate-y-px hover:shadow-md'
@@ -661,68 +679,55 @@ export default function TripView({
                 {editUnlocked ? '🔒 锁定编辑' : '🔓 开始编辑'}
               </button>
             )}
-
-            <span className="w-px h-5 bg-white/15 hidden sm:block" />
-
-            {!readOnly && !shareToken && (
-              <button
-                className="btn bg-white/10 border-white/20 text-white/88 text-[13px] px-3.5 py-2 hover:bg-white/20 hover:border-white/40 hover:text-white hover:-translate-y-px"
-                onClick={() => setShowSettings(true)}
-              >
-                ⚙️ 旅行设置
-              </button>
-            )}
             {!shareToken && role === 'owner' && <button
               className="btn bg-white/10 border-white/20 text-white/88 text-[13px] px-3.5 py-2 hover:bg-white/20 hover:border-white/40 hover:text-white hover:-translate-y-px"
               onClick={() => setShowShare(true)}
             >
               📤 分享行程
             </button>}
-            {!shareToken && role === 'owner' && <button
-              className="btn bg-white/10 border-white/20 text-white/88 text-[13px] px-3.5 py-2 hover:bg-white/20 hover:border-white/40 hover:text-white hover:-translate-y-px"
-              onClick={openEditHistory}
-            >
-              🧾 编辑记录
-            </button>}
 
-            <span className="w-px h-5 bg-white/15 hidden sm:block" />
-
-            <button
-              className="btn bg-white/10 border-white/20 text-white/88 text-[13px] px-3.5 py-2 hover:bg-white/20 hover:border-white/40 hover:text-white hover:-translate-y-px"
-              onClick={exportJSON}
-            >
-              ⬇️ 导出 JSON
-            </button>
-            {!readOnly && !shareToken && role === 'owner' && (
+            <div ref={menuRef} className="relative">
               <button
-                className="btn bg-white/10 border-white/20 text-white/88 text-[13px] px-3.5 py-2 hover:bg-white/20 hover:border-white/40 hover:text-white hover:-translate-y-px"
-                onClick={() => setShowImport(true)}
+                className="btn bg-white/10 border-white/20 text-white/88 text-[13px] px-3.5 py-2 hover:bg-white/20 hover:border-white/40 hover:text-white"
+                aria-haspopup="menu" aria-expanded={showMenu}
+                onClick={() => setShowMenu((v) => !v)}
               >
-                📥 导入 JSON 更新
+                ⋯ 更多
               </button>
-            )}
-            <button
-              className="btn bg-white/10 border-white/20 text-white/88 text-[13px] px-3.5 py-2 hover:bg-white/20 hover:border-white/40 hover:text-white hover:-translate-y-px"
-              onClick={openPrintModal}
-            >
-              🖨 打印 / 导出 PDF
-            </button>
-
-            <span className="flex-1" />
-            {!readOnly && !shareToken && role === 'owner' && (
-              <button
-                className="btn bg-red-900/20 border-red-400/35 text-red-200 text-[13px] px-3.5 py-2 hover:bg-red-900/38 hover:border-red-400/60 hover:text-white"
-                onClick={handleDeleteCurrent}
-              >
-                删除旅行
-              </button>
-            )}
+              {showMenu && (
+                <div role="menu" className="absolute left-0 top-full mt-2 min-w-[210px] py-1.5 bg-surface text-ink rounded border border-line shadow-lg animate-fade-in">
+                  {([
+                    [!readOnly && !shareToken, '⚙️ 旅行设置', () => setShowSettings(true)],
+                    [!shareToken && role === 'owner', '🧾 编辑记录', openEditHistory],
+                    [true, '🖨 打印 / 导出 PDF', openPrintModal],
+                    [true, '⬇️ 导出 JSON', exportJSON],
+                    [!readOnly && !shareToken && role === 'owner', '📥 导入 JSON 更新', () => setShowImport(true)],
+                  ] as const).filter(([show]) => show).map(([, label, action]) => (
+                    <button key={label} role="menuitem"
+                      className="w-full text-left px-4 py-2.5 text-[13.5px] hover:bg-jade-light hover:text-jade-dark"
+                      onClick={() => { setShowMenu(false); action(); }}>
+                      {label}
+                    </button>
+                  ))}
+                  {!readOnly && !shareToken && role === 'owner' && (
+                    <>
+                      <div className="my-1.5 border-t border-line" />
+                      <button role="menuitem"
+                        className="w-full text-left px-4 py-2.5 text-[13.5px] text-danger hover:bg-danger-tint"
+                        onClick={() => { setShowMenu(false); handleDeleteCurrent(); }}>
+                        🗑 删除旅行
+                      </button>
+                    </>
+                  )}
+                </div>
+              )}
+            </div>
           </div>
         </div>
       </header>
 
-      <nav aria-label="行程目录" className="trip-nav sticky top-[68px] z-40 bg-surface/94 backdrop-blur-md border-b border-line shadow-xs overflow-x-auto">
-        <div className="max-w-[1200px] mx-auto px-6 flex items-center gap-1 min-w-max">
+      <nav aria-label="行程目录" className="trip-nav sm:sticky top-[68px] z-40 bg-surface/94 backdrop-blur-md border-b border-line shadow-xs overflow-x-auto">
+        <div className="max-w-[1200px] mx-auto px-3 sm:px-6 flex items-center gap-1 min-w-max">
           {navSections.map(([id, label]) => (
             <a
               key={id}
@@ -739,7 +744,7 @@ export default function TripView({
       </nav>
 
       {/* ── Content ── */}
-      <div className="trip-layout max-w-[1200px] mx-auto px-6 pb-44">
+      <div className="trip-layout max-w-[1200px] mx-auto px-4 sm:px-6 pb-44">
         <aside className="trip-sidebar" aria-label="行程侧栏">
           <p className="text-[11px] font-bold tracking-[0.12em] text-muted uppercase mb-2">每天安排</p>
           {state.days.length
@@ -750,13 +755,13 @@ export default function TripView({
             : <p className="text-muted text-[12.5px] px-2.5">还没有安排 Day</p>}
         </aside>
         <div className="min-w-0" ref={contentRef}>
-          <div id="overview" className={`scroll-mt-32${printSections.overview ? '' : ' print-hide'}`}><Dashboard state={state} description={currentTrip.description} total={total} done={done} startDate={currentTrip.start_date} endDate={currentTrip.end_date} weather={weather} /></div>
+          <div id="overview" className={`scroll-mt-32${printSections.overview ? '' : ' print-hide'}`}><Dashboard state={state} description={currentTrip.description} total={total} done={done} startDate={currentTrip.start_date} endDate={currentTrip.end_date} weather={weather} todayIndex={todayIndex} /></div>
 
           <CollapsibleSection id="prepare" icon={COLLAPSIBLE_META.prepare.icon} title={COLLAPSIBLE_META.prepare.title} summary={sectionSummary.prepare} printVisible={printSections.prepare} open={Boolean(openSections.prepare)} onToggle={() => setOpenSections((p) => ({ ...p, prepare: !p.prepare }))}>
             <Checklist state={state} editUnlocked={editUnlocked} mutate={mutate} canCheck={canCheck} onToggle={toggleCheck} onRequestEdit={canToggleEdit ? toggleEdit : undefined} />
           </CollapsibleSection>
 
-          <div id="itinerary" className={`scroll-mt-32${printSections.itinerary ? '' : ' print-hide'}`}><DaysSection state={state} editUnlocked={editUnlocked} mutate={mutate} mutateNoSave={mutateNoSave} startDate={currentTrip.start_date} weather={weather} authorName={myPresenceName} showDiscussionInPrint={printSections.notes} /></div>
+          <div id="itinerary" className={`scroll-mt-32${printSections.itinerary ? '' : ' print-hide'}`}><DaysSection state={state} editUnlocked={editUnlocked} mutate={mutate} mutateNoSave={mutateNoSave} startDate={currentTrip.start_date} weather={weather} authorName={myPresenceName} showDiscussionInPrint={printSections.notes} todayIndex={todayIndex} /></div>
 
           <CollapsibleSection id="stay" icon={COLLAPSIBLE_META.stay.icon} title={COLLAPSIBLE_META.stay.title} summary={sectionSummary.stay} printVisible={printSections.stay} open={Boolean(openSections.stay)} onToggle={() => setOpenSections((p) => ({ ...p, stay: !p.stay }))}>
             <HotelsSection state={state} editUnlocked={editUnlocked} mutate={mutate} authorName={myPresenceName} printOnlyIndex={printHotelFilter === 'all' ? null : printHotelFilter} showDiscussionInPrint={printSections.notes} />
@@ -806,8 +811,8 @@ export default function TripView({
 
       {/* ── Floating actions: always reachable, so switching modes doesn't need a trip back to the header.
              The edit toggle sits at the bottom and never moves; save appears above it while editing. ── */}
-      <div className="no-print fixed right-5 bottom-5 z-[60] flex flex-col items-end gap-2.5">
-        {showTop && <button className="btn-primary rounded-full shadow-md" onClick={() => window.scrollTo({ top: 0, behavior: 'smooth' })} aria-label="回到顶部">↑ 顶部</button>}
+      <div className="no-print fixed right-4 bottom-4 sm:right-5 sm:bottom-5 z-[60] flex flex-col items-end gap-2.5">
+        {showTop && <button className="btn-primary rounded-full shadow-md" onClick={() => window.scrollTo({ top: 0, behavior: 'smooth' })} aria-label="回到顶部">↑<span className="hidden sm:inline"> 顶部</span></button>}
         {editUnlocked && (
           <button
             className={`rounded-full px-5 py-3 text-[13.5px] font-bold shadow-md transition-all duration-150 flex items-center gap-1.5 ${hasUnsavedChanges ? 'bg-coral text-white hover:bg-danger' : 'bg-jade-dark text-white hover:bg-jade'} disabled:opacity-70`}
@@ -820,7 +825,7 @@ export default function TripView({
         )}
         {canToggleEdit && (
           <button
-            className={`rounded-full px-5 py-3 text-[13.5px] font-bold shadow-md border-[1.5px] transition-all duration-150 flex items-center gap-1.5 ${
+            className={`rounded-full px-4 py-2.5 sm:px-5 sm:py-3 text-[13.5px] font-bold shadow-md border-[1.5px] transition-all duration-150 flex items-center gap-1.5 ${
               editUnlocked
                 ? 'bg-surface text-ink-2 border-line-strong hover:border-jade hover:text-jade-dark'
                 : 'bg-gold text-white border-gold hover:-translate-y-px'

@@ -61,6 +61,10 @@ export default function App() {
   const goHome = useCallback(() => { setURL(null); setSlug(null); }, []);
   const openTrip = useCallback((newSlug: string) => { setURL(newSlug); setSlug(newSlug); }, []);
 
+  // Inside a trip, phones get an icon-only brand and no 新建行程 so the topbar stays one 68px row —
+  // the sticky day pill bar is pinned right under it at `top-[68px]`.
+  const inTrip = Boolean(slug || shareToken);
+
   const handleNewTrip = () => {
     if (!hasConfig) { toast('请先配置 .env。'); return; }
     if (!user) return;
@@ -75,7 +79,7 @@ export default function App() {
           <div className="w-10 h-10 bg-jade-dark rounded-sm grid place-items-center text-white text-[18px] shrink-0 shadow-sm" aria-hidden="true">
             ↗
           </div>
-          <div className="min-w-0">
+          <div className={`min-w-0${inTrip ? ' hidden sm:block' : ''}`}>
             <strong className="block text-[16px] font-bold font-serif text-jade-dark tracking-tight leading-none">
               Trip Planner
             </strong>
@@ -86,7 +90,7 @@ export default function App() {
         <div className="flex gap-2 items-center min-w-0">
           {user && !slug && !shareToken && <button className="btn-ghost hidden sm:inline-flex" onClick={goHome}>我的旅行</button>}
           <AuthControl onUserChange={(nextUser) => setUser(isAnonymousUser(nextUser) ? null : nextUser)} />
-          {user && <button className="btn-primary" onClick={handleNewTrip}>＋ 新建行程</button>}
+          {user && <button className={`btn-primary${inTrip ? ' hidden sm:inline-flex' : ''}`} onClick={handleNewTrip}>＋ 新建行程</button>}
         </div>
       </header>
 

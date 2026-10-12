@@ -18,7 +18,7 @@ export default function CollapsibleSection({
         aria-expanded={open}
         aria-controls={`${id}-body`}
         onClick={onToggle}
-        className="no-print w-full flex justify-between items-center gap-2.5 py-6 text-left"
+        className="no-print w-full flex justify-between items-center gap-2.5 py-4 sm:py-6 text-left"
       >
         <span className="min-w-0">
           <h2 className="font-serif text-[19px] font-bold text-jade-dark flex items-center gap-2">

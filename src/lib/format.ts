@@ -39,13 +39,28 @@ export function formatDateWithWeekday(d?: string | null): string {
   return `${date.toLocaleDateString('zh-CN', { month: 'numeric', day: 'numeric' })} 周${WEEKDAY_LABELS[date.getDay()]}`;
 }
 
+/** Today's local ISO date. In dev builds `?today=YYYY-MM-DD` overrides it, to preview a trip's in-progress view. */
+export function todayIso(): string {
+  if (import.meta.env.DEV) {
+    const override = new URL(location.href).searchParams.get('today');
+    if (override && /^\d{4}-\d{2}-\d{2}$/.test(override)) return override;
+  }
+  return toLocalIsoDate(new Date());
+}
+
+/** 0-based index of today within a trip of `dayCount` days starting on `startDate`, or null if today isn't a trip day. */
+export function todayDayIndex(startDate: string | null | undefined, dayCount: number): number | null {
+  if (!startDate) return null;
+  const diff = Math.round((new Date(todayIso() + 'T00:00:00').getTime() - new Date(startDate + 'T00:00:00').getTime()) / 86400000);
+  return diff >= 0 && diff < dayCount ? diff : null;
+}
+
 export type TripPhase = 'upcoming' | 'ongoing' | 'past' | 'undated';
 
 /** Days until departure (negative once started), plus a coarse phase for badges/sorting. */
 export function tripCountdown(startDate?: string | null, endDate?: string | null): { phase: TripPhase; days: number | null } {
   if (!startDate) return { phase: 'undated', days: null };
-  const today = new Date();
-  today.setHours(0, 0, 0, 0);
+  const today = new Date(todayIso() + 'T00:00:00');
   const start = new Date(startDate + 'T00:00:00');
   const end = endDate ? new Date(endDate + 'T00:00:00') : start;
   const msPerDay = 86400000;
