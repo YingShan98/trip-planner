@@ -1,8 +1,9 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useLayoutEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react';
 import { defaultActivity, defaultDay } from '../../state';
 import type { Activity, Day, Intensity, Mutate, TripState } from '../../types';
 import { confirmDialog } from '../../lib/confirm';
-import { amapSearchUrl, googleDirectionsUrl, googleMapsSearchUrl, toMapEmbedSrc, type TravelMode } from '../../lib/mapEmbed';
+import { amapSearchUrl, googleDirectionsUrl, googleMapsSearchUrl, toMapEmbedSrc } from '../../lib/mapEmbed';
+import { getRoutePref, parseRouteOptions, setRoutePref, subscribeRoutePref, transitMode, type RouteOption } from '../../lib/routeOptions';
 import { dayDate, formatDateWithWeekday } from '../../lib/format';
 import { weatherEmoji, type WeatherResult } from '../../lib/weather';
 import MarkdownText from '../MarkdownText';
@@ -106,7 +107,7 @@ function ActivityRow({ a, di, ai, total, editUnlocked, mutate }: {
       )}
       <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
         {editUnlocked ? (
-          <AutoGrowTextarea singleLine={false} className="inp editable" value={a.move} placeholder="交通（如何前往这一站）"
+          <AutoGrowTextarea singleLine={false} className="inp editable" value={a.move} placeholder="交通：多个方案各占一行会变成可切换的选项，如「🚐 包车：酒店 > 长隆 ⏱️ 约40分钟」「🚇 地铁：…」"
             onChange={(v) => mutate((d) => { d.days[di].items[ai].move = v; })} />
         ) : a.move ? (
           <div className="rich-field"><span className="rich-label">交通</span><MarkdownText text={a.move} /></div>
@@ -182,58 +183,123 @@ function ActivityRow({ a, di, ai, total, editUnlocked, mutate }: {
   );
 }
 
-/* `move` is free text that often mentions several modes ("地铁…或打车…"), so the icon follows
-   whichever keyword appears first rather than a fixed priority. */
-const TRANSIT_MODES: [RegExp, string, string, TravelMode?][] = [
-  [/步行|走路|walk/i, '🚶', '步行', 'walking'],
-  [/地铁|号线|APM|城际|metro|subway|MRT/i, '🚇', '地铁', 'transit'],
-  [/公交|巴士|快巴|bus/i, '🚌', '公交', 'transit'],
-  [/打车|包车|自驾|的士|出租|网约车|专车|接机|送机|taxi|grab|car/i, '🚗', '驾车', 'driving'],
-  [/船|渡轮|夜游|ferry|cruise|boat/i, '⛴️', '乘船', 'transit'],
-  [/航班|飞机|flight/i, '✈️', '航班'],
-  [/高铁|动车|(?:^|[^小])火车|train/i, '🚄', '火车', 'transit'],
-];
+/** Index of the route to show: the viewer's own pick on this stop while it still matches their preferred
+ *  kind of route, else the first route of the preferred kind, else the first route. */
+function useRouteChoice(options: RouteOption[]): [number, (i: number) => void] {
+  const pref = useSyncExternalStore(subscribeRoutePref, getRoutePref);
+  const [picked, setPicked] = useState<{ index: number; pref: string } | null>(null);
+  const prefIndex = pref ? options.findIndex((o) => o.mode.label === pref) : -1;
+  const index = picked && picked.pref === pref ? picked.index : Math.max(prefIndex, 0);
+  const choose = (i: number) => {
+    const mode = options[i].mode.label;
+    setPicked({ index: i, pref: mode });
+    setRoutePref(mode);
+  };
+  return [Math.min(index, options.length - 1), choose];
+}
 
-function transitMode(text: string): { icon: string; label: string; travelMode?: TravelMode } {
-  let best: { icon: string; label: string; travelMode?: TravelMode; at: number } | null = null;
-  for (const [re, icon, label, travelMode] of TRANSIT_MODES) {
-    const at = text.search(re);
-    if (at >= 0 && (!best || at < best.at)) best = { icon, label, travelMode, at };
-  }
-  return best ?? { icon: '➜', label: '前往' };
+/** One route's details: an "A > B > C" route as a vertical list of stops, otherwise the text as written. */
+function RouteDetails({ option }: { option: RouteOption }) {
+  return (
+    <div className="mt-2 rounded-sm bg-surface-2 border border-line px-3 py-2.5 text-ink-2">
+      {option.steps.length > 0 ? (
+        <ol className="route-steps list-none m-0 p-0">
+          {option.steps.map((step, i) => (
+            <li key={i} className="relative pl-5 py-0.5 text-[13px] leading-snug">
+              <span className={`absolute left-0 top-[7px] w-[9px] h-[9px] rounded-full border-2 ${i === 0 || i === option.steps.length - 1 ? 'bg-jade border-jade' : 'bg-surface border-jade-mid'}`} aria-hidden="true" />
+              <MarkdownText text={step} className="!text-[13px] !leading-snug" />
+            </li>
+          ))}
+        </ol>
+      ) : null}
+      {option.detail && (
+        <MarkdownText text={option.detail} className={`!text-[12.5px] !leading-relaxed ${option.steps.length ? 'mt-1.5 !text-muted' : ''}`} />
+      )}
+    </div>
+  );
 }
 
 /**
  * Leg leading to a stop: its `move` text, plus a Google Maps directions link when the stop has a
  * `place` (from the previous stop's place, or from the viewer's location for the day's first stop).
+ * When the text lists several routes ("🚐 包车：…" / "🚇 公共交通：…") they become tabs.
  */
 function TransitConnector({ text, first, to, from }: { text: string; first: boolean; to: string; from: string }) {
   const [open, setOpen] = useState(false);
-  const mode = transitMode(text);
+  const { notes, options } = useMemo(() => parseRouteOptions(text), [text]);
+  const multi = options.length >= 2;
+  const [chosen, chooseRoute] = useRouteChoice(options);
+  const route = multi ? options[chosen] : null;
+
+  /* Picking a route switches every stop on the page, and the ones above can change height (one line of
+     text ⇄ a list of stops). Keep the tapped tab row where it was on screen — not every browser
+     anchors scrolling on its own. */
+  const tabsRef = useRef<HTMLDivElement>(null);
+  const tabsTopRef = useRef<number | null>(null);
+  const choose = (i: number) => {
+    tabsTopRef.current = tabsRef.current?.getBoundingClientRect().top ?? null;
+    chooseRoute(i);
+  };
+  useLayoutEffect(() => {
+    const before = tabsTopRef.current;
+    tabsTopRef.current = null;
+    if (before === null || !tabsRef.current) return;
+    const delta = tabsRef.current.getBoundingClientRect().top - before;
+    if (Math.abs(delta) >= 1) window.scrollTo({ top: window.scrollY + delta, behavior: 'instant' });
+  }, [chosen]);
+  const mode = route ? route.mode : transitMode(text);
   const long = text.length > 36 || text.includes('\n');
   const directions = to.trim() ? googleDirectionsUrl(to, from, mode.travelMode) : null;
   return (
     <div className="itinerary-leg flex items-start gap-2.5 py-2 pl-[26px] text-[12.5px] text-muted">
       <span className="shrink-0 -ml-[15px] w-[30px] h-[30px] rounded-full bg-surface border border-line flex items-center justify-center text-[14px] relative z-[1]"
-        role="img" aria-label={mode.label}>{mode.icon}</span>
+        role="img" aria-label={mode.label}>{route?.icon ?? mode.icon}</span>
       <div className="min-w-0 flex-1 pt-[5px]">
-        {text && (
+        {multi ? (
+          <>
+            <div className="no-print">
+              {(first || notes) && (
+                <div className="mb-1.5">
+                  {first && <span className="font-semibold text-ink-2">出发{notes ? ' · ' : ''}</span>}
+                  {notes && <MarkdownText text={notes} className="inline !text-[12.5px] !text-muted !leading-relaxed [&>p]:inline" />}
+                </div>
+              )}
+              <div ref={tabsRef} role="tablist" aria-label="交通方式" className="flex gap-1.5 overflow-x-auto day-tabs -mx-0.5 px-0.5">
+                {options.map((o, i) => (
+                  <button key={i} role="tab" aria-selected={i === chosen} onClick={() => choose(i)}
+                    className={`shrink-0 flex items-center gap-1 rounded-full border-[1.5px] px-2.5 py-1 min-h-[34px] text-[12.5px] font-semibold transition-colors ${
+                      i === chosen ? 'bg-jade-dark border-jade-dark text-white' : 'bg-surface border-line text-ink-2 hover:border-jade hover:text-jade'
+                    }`}>
+                    <span aria-hidden="true">{o.icon ?? o.mode.icon}</span>
+                    <span>{o.tabLabel}</span>
+                    {o.duration && <span className={`font-medium ${i === chosen ? 'text-white/75' : 'text-muted'}`}>{o.duration.replace(/^约/, '')}</span>}
+                  </button>
+                ))}
+              </div>
+              {route && <RouteDetails option={route} />}
+            </div>
+            {/* On paper every route is listed, as written. */}
+            <div className="hidden print-show">
+              <MarkdownText text={text} className="!text-[12.5px] !text-muted !leading-relaxed" />
+            </div>
+          </>
+        ) : text && (
           <div className={open || !long ? '' : 'line-clamp-1 print-unclamp'}>
             {first && <span className="font-semibold text-ink-2">出发 · </span>}
             <MarkdownText text={text} className="inline !text-[12.5px] !text-muted !leading-relaxed [&>p]:inline" />
           </div>
         )}
-        {(long || directions) && (
-          <div className="no-print flex flex-wrap gap-x-3 mt-0.5 text-[12px] font-medium">
-            {long && (
+        {((long && !multi) || directions) && (
+          <div className="no-print flex flex-wrap items-center gap-x-3 gap-y-1.5 mt-1.5 text-[12px] font-medium">
+            {long && !multi && (
               <button className="text-jade hover:underline" aria-expanded={open} onClick={() => setOpen((v) => !v)}>
                 {open ? '收起' : '展开交通详情'}
               </button>
             )}
             {directions && (
-              <a href={directions} target="_blank" rel="noopener noreferrer" className="text-jade hover:underline"
+              <a href={directions} target="_blank" rel="noopener noreferrer" className="btn-mini !text-jade no-underline hover:no-underline"
                 title={from.trim() ? `${from.trim()} → ${to.trim()}` : `从当前位置前往 ${to.trim()}`}>
-                🧭 路线{from.trim() ? '' : '（从当前位置）'} ↗
+                🧭 {multi ? `${mode.label}路线` : '路线'}{from.trim() ? '' : '（从当前位置）'} ↗
               </a>
             )}
           </div>
@@ -290,9 +356,9 @@ function ItineraryStop({ a, index }: { a: Activity; index: number }) {
           {a.place.trim() && (
             <div className="mt-1 flex flex-wrap items-baseline gap-x-2 text-[12px]">
               <span className="text-ink-2 min-w-0">📍 {a.place.trim()}</span>
-              <span className="no-print flex gap-2">
-                <a href={googleMapsSearchUrl(a.place)} target="_blank" rel="noopener noreferrer" className="text-jade hover:underline">Google 地图 ↗</a>
-                <a href={amapSearchUrl(a.place)} target="_blank" rel="noopener noreferrer" className="text-jade hover:underline">高德 ↗</a>
+              <span className="no-print flex gap-1.5 mt-1">
+                <a href={googleMapsSearchUrl(a.place)} target="_blank" rel="noopener noreferrer" className="btn-mini !text-jade no-underline hover:no-underline">Google 地图 ↗</a>
+                <a href={amapSearchUrl(a.place)} target="_blank" rel="noopener noreferrer" className="btn-mini !text-jade no-underline hover:no-underline">高德 ↗</a>
               </span>
             </div>
           )}
@@ -341,8 +407,8 @@ function ItineraryStop({ a, index }: { a: Activity; index: number }) {
   );
 }
 
-function DayCard({ d, i, total, collapsed, editUnlocked, mutate, mutateNoSave, date, dayWeather, state, authorName, showDiscussionInPrint }: {
-  d: Day; i: number; total: number; collapsed: boolean;
+function DayCard({ d, i, total, collapsed, isToday, editUnlocked, mutate, mutateNoSave, date, dayWeather, state, authorName, showDiscussionInPrint }: {
+  d: Day; i: number; total: number; collapsed: boolean; isToday: boolean;
   editUnlocked: boolean; mutate: Mutate; mutateNoSave: Mutate;
   date: string | null; dayWeather?: { tMax: number; tMin: number; precipProb: number; code: number };
   state: TripState; authorName: string; showDiscussionInPrint: boolean;
@@ -364,12 +430,13 @@ function DayCard({ d, i, total, collapsed, editUnlocked, mutate, mutateNoSave, d
   };
 
   return (
-    <article id={`day-${i + 1}`} data-day-index={i} className="day-card bg-surface border border-line rounded-lg overflow-hidden mb-3.5 shadow-xs">
+    <article id={`day-${i + 1}`} data-day-index={i} className={`day-card bg-surface border rounded-lg overflow-hidden mb-3.5 shadow-xs ${isToday ? 'border-jade ring-2 ring-jade/25' : 'border-line'}`}>
       {/* Day header */}
       <div className="flex items-center gap-2.5 px-4 py-3 bg-surface-3 border-b border-line flex-wrap print-head">
         <span className="bg-jade-dark text-white rounded-[5px] px-2.5 py-1 font-bold text-[11.5px] tracking-[0.06em] shrink-0">
           D{i + 1}
         </span>
+        {isToday && <span className="no-print bg-gold text-white rounded-[5px] px-2 py-1 font-bold text-[11.5px] shrink-0">今天</span>}
         {date && (
           <span className="text-muted text-[12px] font-semibold shrink-0" title={dayWeather ? `${dayWeather.tMax}° / ${dayWeather.tMin}° · 降雨概率 ${dayWeather.precipProb}%` : undefined}>
             {formatDateWithWeekday(date)}
@@ -455,15 +522,15 @@ function DayCard({ d, i, total, collapsed, editUnlocked, mutate, mutateNoSave, d
 
       {/* Day body — folded days stay in the DOM (hidden on screen only) so they still print */}
       <div className={`p-4${collapsed ? ' hidden print-show' : ''}`}>
-          <div className="flex gap-2 flex-wrap mb-3.5">
-            {editUnlocked ? (
+          {(editUnlocked || d.steps) && <div className="flex gap-2 flex-wrap mb-3.5">
+            {editUnlocked && (
               <select className="inp editable w-full sm:w-auto" value={d.intensity}
                 onChange={(e) => mutate((s) => { s.days[i].intensity = e.target.value as Intensity; })}>
                 <option value="light">轻松</option>
                 <option value="medium">中等</option>
                 <option value="heavy">较累</option>
               </select>
-            ) : <span className={`pill border ${intensityClass(d.intensity)}`}>体力：{intensityLabel(d.intensity)}</span>}
+            )}
             {editUnlocked ? (
               <AutoGrowTextarea singleLine={false} className="inp editable flex-1 min-w-[180px]" value={d.steps} placeholder="步行时长/体力提示"
                 onChange={(v) => mutate((s) => { s.days[i].steps = v; })} />
@@ -476,7 +543,7 @@ function DayCard({ d, i, total, collapsed, editUnlocked, mutate, mutateNoSave, d
                 onChange={(e) => mutate((s) => { s.days[i].mapUrl = e.target.value; })}
               />
             ) : null}
-          </div>
+          </div>}
 
           {editUnlocked ? d.items.map((a, j) => (
             <ActivityRow key={j} a={a} di={i} ai={j} total={d.items.length} editUnlocked={editUnlocked} mutate={mutate} />
@@ -500,14 +567,16 @@ function DayCard({ d, i, total, collapsed, editUnlocked, mutate, mutateNoSave, d
             </button>
           )}
 
-          <label className="block text-muted text-[12px] font-semibold mt-3 mb-1.5">Day 备注</label>
           {editUnlocked ? (
+            <>
+            <label className="block text-muted text-[12px] font-semibold mt-3 mb-1.5">Day 备注</label>
             <textarea
               className="inp editable w-full min-h-[60px] resize-y"
               value={d.notes || ''}
               placeholder="当天注意事项、老人休息安排、备选方案等"
               onChange={(e) => mutate((s) => { s.days[i].notes = e.target.value; })}
             />
+            </>
           ) : d.notes ? (
             <div className="rich-field mt-2"><span className="rich-label">当天备注</span><MarkdownText text={d.notes} /></div>
           ) : null}
@@ -519,16 +588,17 @@ function DayCard({ d, i, total, collapsed, editUnlocked, mutate, mutateNoSave, d
 }
 
 /** One row of the 行程总览 list: the day at a glance, with its stops as a numbered list. Click to jump to the day. */
-function DayOverviewRow({ d, i, date, dayWeather, onOpen }: {
-  d: Day; i: number; date: string | null;
+function DayOverviewRow({ d, i, date, isToday, dayWeather, onOpen }: {
+  d: Day; i: number; date: string | null; isToday: boolean;
   dayWeather?: { tMax: number; tMin: number; code: number };
   onOpen: () => void;
 }) {
   return (
     <button onClick={onOpen}
-      className="w-full text-left bg-surface border border-line rounded p-3.5 mb-2.5 shadow-xs transition-all duration-150 hover:border-jade hover:shadow-sm">
+      className={`w-full text-left bg-surface border rounded p-3.5 mb-2.5 shadow-xs transition-all duration-150 hover:border-jade hover:shadow-sm ${isToday ? 'border-jade' : 'border-line'}`}>
       <div className="flex items-center gap-2 flex-wrap">
         <span className="bg-jade-dark text-white rounded-[5px] px-2 py-0.5 font-bold text-[11.5px] tracking-[0.06em] shrink-0">D{i + 1}</span>
+        {isToday && <span className="bg-gold text-white rounded-[5px] px-2 py-0.5 font-bold text-[11.5px] shrink-0">今天</span>}
         {date && (
           <span className="text-muted text-[12px] font-semibold">
             {formatDateWithWeekday(date)}
@@ -560,18 +630,21 @@ function DayOverviewRow({ d, i, date, dayWeather, onOpen }: {
  * (scroll-spy), trip.com-style.
  */
 export default function DaysSection({
-  state, editUnlocked, mutate, mutateNoSave, startDate, weather, authorName, showDiscussionInPrint = true,
+  state, editUnlocked, mutate, mutateNoSave, startDate, weather, authorName, showDiscussionInPrint = true, todayIndex = null,
 }: {
   state: TripState; editUnlocked: boolean; mutate: Mutate; mutateNoSave: Mutate;
   startDate: string | null; weather: WeatherResult | 'loading' | null; authorName: string;
   showDiscussionInPrint?: boolean;
+  /** Index of today's day while the trip is under way; null otherwise. */
+  todayIndex?: number | null;
 }) {
   const weatherByDate = weather && weather !== 'loading' && weather.status === 'ok'
     ? new Map(weather.days.map((w) => [w.date, w]))
     : null;
   /** Day whose card sits under the pill bar; null while the overview (above Day 1) is in view. */
   const [active, setActive] = useState<number | null>(null);
-  const [overviewOpen, setOverviewOpen] = useState(true);
+  // Mid-trip the overview list is just in the way of today's day, so it starts folded.
+  const [overviewOpen, setOverviewOpen] = useState(todayIndex === null);
   const tabsRef = useRef<HTMLDivElement>(null);
   /** Suppresses scroll-spy while a pill-click smooth scroll passes over the days in between. */
   const spyLockUntil = useRef(0);
@@ -611,12 +684,23 @@ export default function DaysSection({
   const jumpTo = (i: number | null) => {
     const target = document.getElementById(i === null ? 'itinerary' : `day-${i + 1}`);
     if (!target) return;
-    const barHeight = tabsRef.current?.getBoundingClientRect().height ?? 0;
-    const top = target.getBoundingClientRect().top + window.scrollY - (i === null ? 115 : 115 + barHeight + 4);
+    const bar = tabsRef.current;
+    const barTop = bar ? parseFloat(getComputedStyle(bar).top) || 0 : 0;
+    const barHeight = bar?.getBoundingClientRect().height ?? 0;
+    const top = target.getBoundingClientRect().top + window.scrollY - (i === null ? barTop : barTop + barHeight + 4);
     setActive(i);
     spyLockUntil.current = Date.now() + 900;
     window.scrollTo({ top, behavior: 'smooth' });
   };
+
+  useEffect(() => {
+    if (todayIndex === null) return;
+    if (state.collapsed[todayIndex]) mutateNoSave((s) => { s.collapsed[todayIndex] = false; });
+    let raf2 = 0;
+    const raf1 = requestAnimationFrame(() => { raf2 = requestAnimationFrame(() => jumpTo(todayIndex)); });
+    return () => { cancelAnimationFrame(raf1); cancelAnimationFrame(raf2); };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   const setAllCollapsed = (value: boolean) =>
     mutateNoSave((s) => { s.days.forEach((_, i) => { s.collapsed[i] = value; }); });
@@ -628,7 +712,7 @@ export default function DaysSection({
     }`;
 
   return (
-    <section className="py-7 border-b border-line">
+    <section className="py-5 sm:py-7 border-b border-line">
       <div className="flex justify-between items-center gap-2.5 pb-3.5 mb-4 border-b-2 border-line flex-wrap">
         <h2 className="font-serif text-[19px] font-bold text-jade-dark">🗓️ 行程</h2>
         <div className="flex items-center gap-2">
@@ -643,7 +727,7 @@ export default function DaysSection({
 
       {dayCount > 0 && (
         <div ref={tabsRef} role="tablist" aria-label="跳到某一天"
-          className="day-tabs no-print sticky top-[115px] z-30 -mx-1 px-1 py-2 mb-3 flex gap-2 overflow-x-auto bg-bg/95 backdrop-blur-md">
+          className="day-tabs no-print sticky top-[68px] sm:top-[115px] z-30 -mx-1 px-1 py-2 mb-3 flex gap-2 overflow-x-auto bg-bg/95 backdrop-blur-md">
           <button role="tab" aria-selected={active === null} className={tabClass(active === null)} onClick={() => jumpTo(null)}>
             ☰ 总览
           </button>
@@ -652,7 +736,9 @@ export default function DaysSection({
             return (
               <button key={i} role="tab" aria-selected={active === i} className={tabClass(active === i)} onClick={() => jumpTo(i)}>
                 <span>Day {i + 1}</span>
-                {date && <span className={`text-[10.5px] font-medium ${active === i ? 'text-white/80' : 'text-muted'}`}>{formatDateWithWeekday(date)}</span>}
+                {i === todayIndex
+                  ? <span className={`text-[10.5px] font-bold ${active === i ? 'text-white' : 'text-gold'}`}>今天</span>
+                  : date && <span className={`text-[10.5px] font-medium ${active === i ? 'text-white/80' : 'text-muted'}`}>{formatDateWithWeekday(date)}</span>}
               </button>
             );
           })}
@@ -667,7 +753,7 @@ export default function DaysSection({
           </button>
           {overviewOpen && state.days.map((d, i) => {
             const date = dayDate(startDate, i);
-            return <DayOverviewRow key={i} d={d} i={i} date={date} dayWeather={date ? weatherByDate?.get(date) : undefined} onOpen={() => jumpTo(i)} />;
+            return <DayOverviewRow key={i} d={d} i={i} date={date} isToday={i === todayIndex} dayWeather={date ? weatherByDate?.get(date) : undefined} onOpen={() => jumpTo(i)} />;
           })}
         </div>
       )}
@@ -677,7 +763,7 @@ export default function DaysSection({
         return (
           <DayCard
             key={i} d={d} i={i} total={dayCount}
-            collapsed={Boolean(state.collapsed[i])}
+            collapsed={Boolean(state.collapsed[i])} isToday={i === todayIndex}
             editUnlocked={editUnlocked} mutate={mutate} mutateNoSave={mutateNoSave}
             date={date} dayWeather={date ? weatherByDate?.get(date) : undefined}
             state={state} authorName={authorName} showDiscussionInPrint={showDiscussionInPrint}
