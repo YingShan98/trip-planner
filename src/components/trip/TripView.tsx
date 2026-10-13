@@ -9,7 +9,8 @@ import { downloadJSON } from '../../lib/download';
 import { createShare, deleteTrip, getTripRole, loadSharedTrip, loadTrip, saveSharedTrip, saveTrip, SaveConflictError, updateTripMeta, verifyEditPassword, type TripMeta } from '../../lib/tripApi';
 import { ensureGuestSession, getExistingGuestUser, getTripEditEvents, isAnonymousUser, setGuestName, type TripEditEvent } from '../../lib/guestAuth';
 import type { TripState } from '../../types';
-import { convertAmount, convertToLocalTrip, formatMoney, hasForeignAmounts, parseRate } from '../../lib/currency';
+import { convertToLocalTrip, formatMoney, hasForeignAmounts, parseRate } from '../../lib/currency';
+import { budgetBreakdown } from '../../lib/budget';
 import Dashboard from './Dashboard';
 import CollapsibleSection from './CollapsibleSection';
 import Checklist from './Checklist';
@@ -561,16 +562,13 @@ export default function TripView({
   const homeCurrency = currentTrip.home_currency || 'MYR';
   const foreignCurrency = state.foreignCurrency || '外币';
   const exchangeRateValue = parseRate(state.exchangeRate);
-  let budgetTotalHome = 0;
-  for (const x of state.budget) {
-    const raw = (Number(x.quantity) || 0) * (Number(x.unitPrice) || 0);
-    const conv = convertAmount(raw, state.isLocal ? 'home' : x.currency, state.isLocal ? null : exchangeRateValue);
-    if (conv.home !== null) budgetTotalHome += conv.home;
-  }
-  const travelerCount = Number(state.travelers) || 0;
-  const budgetSummary = state.budget.length
-    ? `估算 ${formatMoney(budgetTotalHome, homeCurrency)}${travelerCount > 0 ? ` · 每人 ${formatMoney(budgetTotalHome / travelerCount, homeCurrency)}` : ''}`
-    : '暂无项目';
+  // With lines shared by only some travelers, per-person is a range: everyone-lines only → every line.
+  const budget = budgetBreakdown(state);
+  const perPersonLabel = budget.everyone === null ? ''
+    : budget.partial.length
+      ? ` · 每人 ${formatMoney(budget.everyone, homeCurrency)}–${formatMoney(budget.fullParticipant, homeCurrency).replace(homeCurrency, '').trim()}`
+      : ` · 每人 ${formatMoney(budget.everyone, homeCurrency)}`;
+  const budgetSummary = state.budget.length ? `估算 ${formatMoney(budget.totalHome, homeCurrency)}${perPersonLabel}` : '暂无项目';
   const sectionSummary: Record<string, string> = {
     prepare: state.checklist.length ? `${done}/${state.checklist.length} 完成` : '暂无事项',
     stay: state.hotels.length ? `${state.hotels.length} 个候选` : '暂无候选',

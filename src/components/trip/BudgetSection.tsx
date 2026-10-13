@@ -1,6 +1,7 @@
 import { defaultBudget } from '../../state';
-import { convertAmount, formatMoney, parseRate } from '../../lib/currency';
-import type { CurrencyKey, Mutate, TripState } from '../../types';
+import { formatMoney } from '../../lib/currency';
+import { budgetBreakdown, splitCount } from '../../lib/budget';
+import type { Mutate, TripState } from '../../types';
 import MarkdownText from '../MarkdownText';
 import AutoGrowTextarea from '../AutoGrowTextarea';
 
@@ -12,42 +13,70 @@ export default function BudgetSection({
   const home    = currency || 'MYR';
   const foreign = state.foreignCurrency || '外币';
   const local   = state.isLocal;
-  const rate    = local ? null : parseRate(state.exchangeRate);
+  const b = budgetBreakdown(state);
+  const { travelers } = b;
+  const hasPartial = b.partial.length > 0;
 
-  const travelers = Number(state.travelers) || 0;
-  let totalHome = 0, unconverted = 0;
-  // On a local trip every amount is home currency, whatever an item's stored currency key says.
-  const itemCurrency = (c: CurrencyKey): CurrencyKey => (local ? 'home' : c);
-  for (const x of state.budget) {
-    const raw  = (Number(x.quantity) || 0) * (Number(x.unitPrice) || 0);
-    const conv = convertAmount(raw, itemCurrency(x.currency), rate);
-    if (conv.home !== null) totalHome += conv.home;
-    else unconverted++;
-  }
-  const perPerson = travelers > 0 ? totalHome / travelers : null;
+  /** For a line shared by only some travelers: how many, and "每人 RM 1,019.83". Null for everyone-lines. */
+  const shareOf = (i: number): { people: number; each: string } | null => {
+    const people = splitCount(state.budget[i], travelers);
+    const amount = b.itemHome[i];
+    return people !== null && travelers > 0 && amount !== null ? { people, each: `每人 ${formatMoney(amount / people, home)}` } : null;
+  };
+  const splitPlaceholder = travelers > 0 ? `全员（${travelers}）` : '全员';
+  const setSplit = (i: number, v: string) => mutate((d) => { d.budget[i].splitAmong = v; });
 
   return (
     <>
-      <div className="flex flex-wrap items-center justify-between gap-x-6 gap-y-3 mb-4 bg-jade-light border border-jade-tint rounded-lg px-4 py-3">
-        <div className="flex flex-wrap gap-x-6 gap-y-2">
-          <div>
+      {/* ── Summary: total on top; per-person as label/amount rows, which stay readable on a phone ── */}
+      <div className="mb-4 bg-jade-light border border-jade-tint rounded-lg px-4 py-3">
+        <div className="flex items-start justify-between gap-3">
+          <div className="min-w-0">
             <span className="block text-[11px] font-semibold text-muted uppercase tracking-[0.06em]">总计（{home}）</span>
-            <strong className="text-[18px] text-jade-dark">{formatMoney(totalHome, home)}</strong>
+            <strong className="text-[20px] text-jade-dark break-words">{formatMoney(b.totalHome, home)}</strong>
           </div>
-          <div>
-            <span className="block text-[11px] font-semibold text-muted uppercase tracking-[0.06em]">每人</span>
-            <strong className="text-[18px] text-jade-dark">{perPerson !== null ? formatMoney(perPerson, home) : '未设置人数'}</strong>
+          <div className="shrink-0 text-right" title="同行人数在「旅行设置」中修改">
+            <span className="block text-[11px] font-semibold text-muted">同行人数</span>
+            <span className="pill mt-0.5">{travelers > 0 ? `${travelers} 人` : '未设置'}</span>
           </div>
         </div>
-        <div className="flex items-center gap-2" title="同行人数在「旅行设置」中修改">
-          <span className="text-[12px] font-semibold text-muted whitespace-nowrap">同行人数</span>
-          <span className="pill">{travelers > 0 ? `${travelers} 人` : '未设置'}</span>
-          {editUnlocked && <span className="text-[11.5px] text-muted edit-only">在「旅行设置」中修改</span>}
-        </div>
+
+        <dl className="mt-2.5 pt-2.5 border-t border-jade-tint text-[13px] m-0">
+          {travelers <= 0 ? (
+            <div className="flex justify-between gap-3"><dt className="text-muted">每人</dt><dd className="m-0 text-muted">未设置人数</dd></div>
+          ) : !hasPartial ? (
+            <div className="flex justify-between items-baseline gap-3">
+              <dt className="text-ink-2 font-semibold">每人</dt>
+              <dd className="m-0 text-[17px] font-bold text-jade-dark whitespace-nowrap">{formatMoney(b.everyone, home)}</dd>
+            </div>
+          ) : (
+            <div className="flex flex-col gap-2">
+              <div className="flex justify-between items-baseline gap-3">
+                <dt className="min-w-0 text-ink-2">全员共同项目<span className="block text-[11.5px] text-muted">{travelers}人平分</span></dt>
+                <dd className="m-0 shrink-0 font-semibold text-ink whitespace-nowrap">{formatMoney(b.everyone, home)}<span className="text-muted font-normal">/人</span></dd>
+              </div>
+              {b.partial.map((p) => (
+                <div key={p.index} className="flex justify-between items-baseline gap-3">
+                  <dt className="min-w-0 text-ink-2 break-words">＋ {p.label}<span className="block text-[11.5px] text-muted">只算 {p.people} 人</span></dt>
+                  <dd className="m-0 shrink-0 font-semibold text-ink whitespace-nowrap">+{formatMoney(p.perPerson, home)}<span className="text-muted font-normal">/人</span></dd>
+                </div>
+              ))}
+              <div className="flex justify-between items-baseline gap-3 pt-2 border-t border-jade-tint">
+                <dt className="min-w-0 font-semibold text-jade-dark">参加全部项目的人</dt>
+                <dd className="m-0 shrink-0 text-[17px] font-bold text-jade-dark whitespace-nowrap">{formatMoney(b.fullParticipant, home)}<span className="text-[13px] font-normal text-muted">/人</span></dd>
+              </div>
+            </div>
+          )}
+        </dl>
+        {editUnlocked && (
+          <p className="edit-only text-[11.5px] text-muted mt-2.5 mb-0">
+            同行人数在「旅行设置」中修改。只有部分人参加的项目（例如只帮 6 人订的机票），填「分摊人数」，每人金额就只分给这些人。
+          </p>
+        )}
       </div>
 
-      {unconverted > 0 && (
-        <p className="text-muted text-[12.5px] mb-3.5">{unconverted} 项未换算（请设置汇率）</p>
+      {b.unconverted > 0 && (
+        <p className="text-muted text-[12.5px] mb-3.5">{b.unconverted} 项未换算（请设置汇率）</p>
       )}
 
       {state.budget.length === 0 ? (
@@ -57,7 +86,7 @@ export default function BudgetSection({
         <table className="budget-table w-full border-separate border-spacing-0 bg-surface border border-line rounded-lg overflow-hidden shadow-xs">
           <thead>
             <tr>
-              {(local ? ['预算项目', '数量', '单价', `小计（${home}）`, '备注', ''] : ['预算项目', '数量', '单价', '币种', '原币小计', `折合金额（${home}）`, '备注', '']).map((h) => (
+              {(local ? ['预算项目', '数量', '单价', '分摊人数', `小计（${home}）`, '备注', ''] : ['预算项目', '数量', '单价', '分摊人数', '币种', '原币小计', `折合金额（${home}）`, '备注', '']).map((h) => (
                 <th key={h} className="bg-surface-3 text-muted text-[11.5px] font-bold uppercase tracking-[0.08em] px-3 py-[11px] text-left border-b border-line">
                   {h}
                 </th>
@@ -67,7 +96,8 @@ export default function BudgetSection({
           <tbody>
             {state.budget.map((x, i) => {
               const raw  = (Number(x.quantity) || 0) * (Number(x.unitPrice) || 0);
-              const conv = convertAmount(raw, itemCurrency(x.currency), rate);
+              const amount = b.itemHome[i];
+              const share = shareOf(i);
               return (
                 <tr key={i} className="group">
                   {[
@@ -76,6 +106,9 @@ export default function BudgetSection({
                       : <span className="block whitespace-pre-wrap break-words">{x.category}</span>,
                     <input className="editable w-full border-none bg-transparent p-1 outline-none min-w-[60px] group-hover:bg-jade-light rounded transition-colors text-center" type="number" value={x.quantity} onChange={(e) => mutate((d) => { d.budget[i].quantity = e.target.value; })} />,
                     <input className="editable w-full border-none bg-transparent p-1 outline-none min-w-[60px] group-hover:bg-jade-light rounded transition-colors text-center" type="number" value={x.unitPrice} onChange={(e) => mutate((d) => { d.budget[i].unitPrice = e.target.value; })} />,
+                    editUnlocked
+                      ? <input aria-label={`预算项目 ${i + 1} 分摊人数`} className="editable w-full border-none bg-transparent p-1 outline-none min-w-[64px] group-hover:bg-jade-light rounded transition-colors text-center" type="number" min={1} step={1} placeholder={splitPlaceholder} value={x.splitAmong ?? ''} onChange={(e) => setSplit(i, e.target.value)} />
+                      : <span className={`text-[12.5px] whitespace-nowrap ${share ? 'font-semibold text-ink-2' : 'text-muted'}`}>{share ? `${share.people} 人` : '全员'}</span>,
                     ...(local ? [] : [
                       <select className="editable border border-line rounded-[5px] bg-surface px-2 py-1 text-[12.5px] appearance-none" value={x.currency} onChange={(e) => mutate((d) => { d.budget[i].currency = e.target.value as 'home' | 'foreign'; })}>
                         <option value="home">{home}</option>
@@ -83,7 +116,10 @@ export default function BudgetSection({
                       </select>,
                       <span className="text-[13px] font-medium">{formatMoney(raw, x.currency === 'home' ? home : foreign)}</span>,
                     ]),
-                    <span className="text-[13px] font-medium text-jade-dark">{conv.home !== null ? formatMoney(conv.home, home) : '未换算'}</span>,
+                    <span className="text-[13px] font-medium text-jade-dark">
+                      {amount !== null ? formatMoney(amount, home) : '未换算'}
+                      {share && <span className="block text-[11.5px] font-normal text-muted whitespace-nowrap">{share.each}</span>}
+                    </span>,
                     editUnlocked ? <AutoGrowTextarea singleLine={false} aria-label={`预算项目 ${i + 1} 备注`} className="editable block w-full border-none bg-transparent p-1 outline-none group-hover:bg-jade-light rounded transition-colors" value={x.note} onChange={(v) => mutate((d) => { d.budget[i].note = v; })} /> : <MarkdownText text={x.note} className="budget-note" />,
                     editUnlocked ? <button aria-label={`删除预算项目「${x.category || i + 1}」`} className="btn-mini edit-only" onClick={() => mutate((d) => { d.budget.splice(i, 1); })}>×</button> : null,
                   ].map((cell, ci) => (
@@ -99,12 +135,14 @@ export default function BudgetSection({
       </div>
       )}
 
+      {/* ── Phones: one card per line ── */}
       <div className="sm:hidden flex flex-col gap-3">
         {state.budget.length === 0 ? (
           <div className="empty-state">还没有预算项目</div>
         ) : state.budget.map((x, i) => {
           const raw = (Number(x.quantity) || 0) * (Number(x.unitPrice) || 0);
-          const conv = convertAmount(raw, itemCurrency(x.currency), rate);
+          const amount = b.itemHome[i];
+          const share = shareOf(i);
           return (
             <article key={i} className="bg-surface border border-line rounded-lg p-4 shadow-xs">
               <div className="flex items-start gap-3 mb-3.5">
@@ -124,6 +162,7 @@ export default function BudgetSection({
                 )}
               </div>
 
+              {/* Two columns: 数量 | 单价, then 币种 | 分摊人数 (分摊人数 alone on a local trip). */}
               <div className="grid grid-cols-2 gap-2.5 mb-3">
                 <label className="field">
                   <span className="text-[11px] font-semibold text-muted">数量</span>
@@ -133,20 +172,26 @@ export default function BudgetSection({
                   <span className="text-[11px] font-semibold text-muted">单价</span>
                   <input aria-label={`预算项目 ${i + 1} 单价`} className="inp editable" type="number" value={x.unitPrice} onChange={(e) => mutate((d) => { d.budget[i].unitPrice = e.target.value; })} />
                 </label>
-              </div>
-
-              <div className="flex items-end gap-2.5 mb-3.5">
-                {!local && <label className="field flex-1">
+                {!local && <label className="field">
                   <span className="text-[11px] font-semibold text-muted">币种</span>
                   <select aria-label={`预算项目 ${i + 1} 币种`} className="inp editable" value={x.currency} onChange={(e) => mutate((d) => { d.budget[i].currency = e.target.value as 'home' | 'foreign'; })}>
                     <option value="home">{home}</option>
                     <option value="foreign">{foreign}</option>
                   </select>
                 </label>}
-                <div className="flex-1 min-w-0 rounded-sm bg-jade-light border border-jade-tint px-3 py-2">
-                  <span className="block text-[11px] font-semibold text-muted">折合金额（{home}）</span>
-                  <strong className="block text-[14px] text-jade-dark break-words">{conv.home !== null ? formatMoney(conv.home, home) : '未换算'}</strong>
+                {(editUnlocked || share) && <label className="field">
+                  <span className="text-[11px] font-semibold text-muted">分摊人数</span>
+                  <input aria-label={`预算项目 ${i + 1} 分摊人数`} className="inp editable" type="number" min={1} step={1} inputMode="numeric"
+                    placeholder={splitPlaceholder} value={x.splitAmong ?? ''} onChange={(e) => setSplit(i, e.target.value)} />
+                </label>}
+              </div>
+
+              <div className="rounded-sm bg-jade-light border border-jade-tint px-3 py-2 mb-3.5">
+                <div className="flex items-baseline justify-between gap-3">
+                  <span className="text-[11px] font-semibold text-muted">{local ? '小计' : '折合金额'}（{home}）</span>
+                  <strong className="text-[14px] text-jade-dark text-right break-words">{amount !== null ? formatMoney(amount, home) : '未换算'}</strong>
                 </div>
+                {share && <div className="text-right text-[12px] text-ink-2 mt-0.5">{share.people}人分摊 · {share.each}</div>}
               </div>
 
               {!local && (

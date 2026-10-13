@@ -89,6 +89,8 @@ export interface BudgetItem {
   unitPrice: number | string;
   currency: CurrencyKey;
   note: string;
+  /** How many travelers share this line (e.g. 6 when flights were booked for 6 of 8). '' = everyone. */
+  splitAmong: number | string;
 }
 
 /** Ties a note to a specific hotel/day card instead of the general notes wall. Indexes into TripState.hotels/days. */

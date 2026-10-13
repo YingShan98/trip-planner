@@ -118,6 +118,7 @@ export async function loadTrip(slug: string): Promise<TripWorkspace> {
   state.budget = (result('读取预算', budget) as Array<Record<string, unknown>>).map((item) => ({
     category: String(item.category || ''), unit: String(item.unit || ''), quantity: Number(item.quantity || 0), unitPrice: Number(item.unit_price || 0),
     currency: item.currency_code === trip.home_currency ? 'home' : 'foreign', note: String(item.note || ''),
+    splitAmong: item.split_among == null ? '' : Number(item.split_among),
   } as BudgetItem));
   state.notes = (result('读取留言', notes) as Array<Record<string, unknown>>).map((item) => ({
     author: String(item.author_name || ''), text: String(item.content || ''), ts: String(item.created_at || ''),
@@ -265,6 +266,8 @@ export async function loadSharedTrip(token: string): Promise<TripWorkspace> {
   const workspace = data as TripWorkspace;
   // A database not yet migrated to trip_days.hotel returns days without the key.
   workspace.state.days = workspace.state.days.map((day) => ({ ...day, hotel: typeof day.hotel === 'string' ? day.hotel : '' }));
+  // Likewise budget_items.split_among: missing before its migration, JSON null when unset.
+  workspace.state.budget = workspace.state.budget.map((b) => ({ ...b, splitAmong: b.splitAmong ?? '' }));
   return workspace;
 }
 

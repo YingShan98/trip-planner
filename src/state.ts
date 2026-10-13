@@ -45,7 +45,7 @@ export function defaultTransport(): TransportItem {
 }
 
 export function defaultBudget(): BudgetItem {
-  return { category: '', unit: '', quantity: 1, unitPrice: '', currency: 'home', note: '' };
+  return { category: '', unit: '', quantity: 1, unitPrice: '', currency: 'home', note: '', splitAmong: '' };
 }
 
 export function templateState(): TripState {
@@ -187,7 +187,11 @@ export function templateState(): TripState {
         chosen: true,
       },
     ],
-    budget: [{ category: '示例：住宿', unit: '晚', quantity: 3, unitPrice: 300, currency: 'home', note: '示例备注' }],
+    budget: [
+      { category: '示例：住宿', unit: '晚', quantity: 3, unitPrice: 300, currency: 'home', note: '示例备注', splitAmong: '' },
+      // splitAmong: only some travelers share this line (here 1 of 2), so per-person figures split it among them only.
+      { category: '示例：机票（只有1人）', unit: '人', quantity: 1, unitPrice: 800, currency: 'home', note: '示例：另一位已自行订票', splitAmong: 1 },
+    ],
     notes: [{ author: '示例：小明', text: '示例留言内容', ts: '2027-01-01 12:00:00' }],
     attachments: [{ label: '示例：详细行程文档', url: 'https://example.com' }],
     collapsed: {},
