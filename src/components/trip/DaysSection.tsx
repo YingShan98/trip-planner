@@ -398,7 +398,7 @@ function ItineraryStop({ a, index }: { a: Activity; index: number }) {
           {a.place.trim() && (searchablePlace(a.place) ? (
             <div className="mt-1 flex flex-wrap items-baseline gap-x-2 text-[12px]">
               <span className="text-ink-2 min-w-0">📍 {a.place.trim()}</span>
-              <span className="no-print flex gap-1.5 mt-1">
+              <span className="no-print flex flex-wrap gap-1.5 mt-1">
                 <a href={googleMapsSearchUrl(a.place)} target="_blank" rel="noopener noreferrer" className="btn-mini !text-jade no-underline hover:no-underline">Google 地图 ↗</a>
                 <a href={amapSearchUrl(a.place)} target="_blank" rel="noopener noreferrer" className="btn-mini !text-jade no-underline hover:no-underline">高德 ↗</a>
               </span>

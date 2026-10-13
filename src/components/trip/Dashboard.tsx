@@ -65,29 +65,40 @@ export default function Dashboard({
         <h2 className="font-serif text-[19px] font-bold text-jade-dark">📋 旅行速览</h2>
         {description && <span className="text-muted text-[13px]">{description}</span>}
       </div>
-      {todayIndex !== null ? <TodayCard state={state} todayIndex={todayIndex} /> : (
-        <div className="grid grid-cols-[repeat(auto-fit,minmax(100px,1fr))] sm:grid-cols-[repeat(auto-fit,minmax(140px,1fr))] gap-2 sm:gap-3">
-          {[
-            ...(countdownLabel ? [{
-              label: countdown.phase === 'upcoming' ? '距出发' : '旅行状态',
-              value: countdown.phase === 'upcoming' ? `${countdown.days} 天` : countdownLabel,
-            }] : []),
-            { label: '旅行天数', value: `${state.days.length} 天` },
-            { label: '行程项目', value: `${total} 项` },
-            { label: '出发准备', value: `${done}/${state.checklist.length}` },
-            { label: '打包进度', value: `${packed}/${state.packing.length}` },
-            { label: '酒店候选', value: `${state.hotels.length} 个` },
-          ].map(({ label, value }) => (
-            <div
-              key={label}
-              className="bg-surface border border-line rounded p-3 sm:p-4 shadow-xs transition-all duration-150 hover:shadow-sm hover:-translate-y-px"
-            >
-              <small className="block text-muted text-[11px] sm:text-[11.5px] font-semibold uppercase tracking-[0.07em] mb-1 sm:mb-2">{label}</small>
-              <strong className="font-serif text-[19px] sm:text-[26px] font-bold text-jade-dark leading-[1.15]">{value}</strong>
+      {todayIndex !== null ? <TodayCard state={state} todayIndex={todayIndex} /> : (() => {
+        const stats = [
+          ...(countdownLabel ? [{
+            label: countdown.phase === 'upcoming' ? '距出发' : '旅行状态',
+            value: countdown.phase === 'upcoming' ? `${countdown.days} 天` : countdownLabel,
+          }] : []),
+          { label: '旅行天数', value: `${state.days.length} 天` },
+          { label: '行程项目', value: `${total} 项` },
+          { label: '出发准备', value: `${done}/${state.checklist.length}` },
+          { label: '打包进度', value: `${packed}/${state.packing.length}` },
+          { label: '酒店', value: `${state.hotels.length} 个` },
+        ];
+        return (
+          <>
+            {/* Phones: one wrapping row of chips, so the itinerary starts near the top of the screen. */}
+            <div className="sm:hidden flex flex-wrap gap-1.5">
+              {stats.map(({ label, value }) => (
+                <span key={label} className="inline-flex items-baseline gap-1 bg-surface border border-line rounded-full px-2.5 py-1 text-[12px]">
+                  <span className="text-muted">{label}</span>
+                  <strong className="text-jade-dark">{value}</strong>
+                </span>
+              ))}
             </div>
-          ))}
-        </div>
-      )}
+            <div className="hidden sm:grid grid-cols-[repeat(auto-fit,minmax(140px,1fr))] gap-3">
+              {stats.map(({ label, value }) => (
+                <div key={label} className="bg-surface border border-line rounded p-4 shadow-xs transition-all duration-150 hover:shadow-sm hover:-translate-y-px">
+                  <small className="block text-muted text-[11.5px] font-semibold uppercase tracking-[0.07em] mb-2">{label}</small>
+                  <strong className="font-serif text-[26px] font-bold text-jade-dark leading-[1.15]">{value}</strong>
+                </div>
+              ))}
+            </div>
+          </>
+        );
+      })()}
 
       {weather === 'loading' && (
         <p className="text-muted text-[12.5px] mt-4">正在获取天气预报…</p>

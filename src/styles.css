@@ -243,7 +243,23 @@
   .btn-mini { min-height: 36px; }
 }
 
+/* Trip views: one section at a time. Inactive views are hidden on screen only, so printing from any
+   view still includes every section the print options ask for. */
+@media screen { .view-hidden { display: none !important; } }
+
+/* Phone tab bar (56px + the iPhone home-indicator area); floating buttons and toasts sit above it. */
+.tabbar { padding-bottom: env(safe-area-inset-bottom); }
+.fab-stack { bottom: calc(68px + env(safe-area-inset-bottom)); }
+body:has(.tabbar) .toast { bottom: calc(76px + env(safe-area-inset-bottom)); }
+@media (min-width: 640px) {
+  .fab-stack { bottom: 20px; }
+  body:has(.tabbar) .toast { bottom: 24px; }
+}
+
 .trip-layout { display: grid; grid-template-columns: 176px minmax(0, 1fr); gap: 28px; }
+/* Only the itinerary has the day list; other views use the full width. */
+.trip-layout.single { display: block; }
+.trip-layout.single .trip-sidebar { display: none; }
 .trip-sidebar { position: sticky; top: 104px; align-self: start; padding-top: 28px; }
 .trip-sidebar a { display: block; padding: 6px 10px; border-left: 2px solid transparent; color: var(--color-muted); font-size: 12.5px; text-decoration: none; }
 .trip-sidebar a:hover { color: var(--color-jade); border-left-color: var(--color-jade); background: var(--color-jade-light); }
@@ -322,3 +338,6 @@
   .budget-table th:nth-child(3), .budget-table td:nth-child(3) { width: 18%; }
   .budget-table th:nth-child(4), .budget-table td:nth-child(4) { width: 20%; }
 }
+
+/* The 其他 sheet opens just above the phone tab bar. */
+.tabbar-sheet { bottom: calc(56px + env(safe-area-inset-bottom)); }

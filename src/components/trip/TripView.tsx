@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useLayoutEffect, useRef, useState, type ReactNode } from 'react';
 import type { RealtimeChannel } from '@supabase/supabase-js';
 import { sb } from '../../lib/supabase';
 import { toast } from '../../lib/toast';
@@ -12,7 +12,6 @@ import type { TripState } from '../../types';
 import { convertToLocalTrip, formatMoney, hasForeignAmounts, parseRate } from '../../lib/currency';
 import { budgetBreakdown } from '../../lib/budget';
 import Dashboard from './Dashboard';
-import CollapsibleSection from './CollapsibleSection';
 import Checklist from './Checklist';
 import DaysSection from './DaysSection';
 import HotelsSection from './HotelsSection';
@@ -36,21 +35,34 @@ function buildShareLink(token: string): string {
   return u.toString();
 }
 
-const SECTIONS = [
-  ['overview', '概览'], ['prepare', '准备'], ['itinerary', '行程'],
-  ['stay', '住宿'], ['currency', '汇率'], ['transport', '交通'], ['budget', '预算'], ['notes', '讨论'], ['attachments', '附件'],
+/** The trip page shows one view at a time; 行程 is the default. Phones get a bottom tab bar
+ *  (the first four, plus 其他 for the rest); wider screens get the top tab bar with all of them. */
+const VIEWS = [
+  { id: 'itinerary',   icon: '🗓️', label: '行程', title: '行程' },
+  { id: 'prepare',     icon: '☑️', label: '准备', title: '出发准备' },
+  { id: 'stay',        icon: '🏨', label: '住宿', title: '住宿' },
+  { id: 'budget',      icon: '💰', label: '预算', title: '预算' },
+  { id: 'transport',   icon: '🚐', label: '交通', title: '交通参考' },
+  { id: 'notes',       icon: '💬', label: '讨论', title: '留言板' },
+  { id: 'attachments', icon: '📎', label: '附件', title: '附件与资料' },
 ] as const;
+type ViewId = typeof VIEWS[number]['id'];
+const PHONE_TABS: ViewId[] = ['itinerary', 'prepare', 'stay', 'budget'];
 
-/** Ids whose content is wrapped in a `<CollapsibleSection>`; overview/itinerary are always visible. */
-const COLLAPSIBLE_META: Record<string, { icon: string; title: string }> = {
-  prepare:     { icon: '☑️', title: '出发准备' },
-  stay:        { icon: '🏨', title: '酒店候选' },
-  currency:    { icon: '💱', title: '货币换算' },
-  transport:   { icon: '🚐', title: '交通参考' },
-  budget:      { icon: '💰', title: '预算' },
-  notes:       { icon: '💬', title: '留言板' },
-  attachments: { icon: '📎', title: '附件与资料' },
-};
+/** A section inside a view: a plain heading (no folding — the view already scopes what's shown). */
+function ViewPanel({ id, icon, title, summary, printVisible = true, children }: {
+  id: string; icon: string; title: string; summary?: string; printVisible?: boolean; children: ReactNode;
+}) {
+  return (
+    <section id={id} className={`py-5 sm:py-7 border-b border-line last:border-b-0${printVisible ? '' : ' print-hide'}`}>
+      <div className="flex justify-between items-baseline gap-x-3 gap-y-1 flex-wrap pb-3.5 mb-4 border-b-2 border-line">
+        <h2 className="font-serif text-[19px] font-bold text-jade-dark flex items-center gap-2"><span aria-hidden="true">{icon}</span> {title}</h2>
+        {summary && <span className="text-muted text-[12.5px]">{summary}</span>}
+      </div>
+      {children}
+    </section>
+  );
+}
 
 export default function TripView({
   slug, readOnly = false, shareToken, onHome, onDeleted,
@@ -77,8 +89,11 @@ export default function TripView({
   const [editEvents, setEditEvents] = useState<TripEditEvent[] | null>(null);
   const [hasUnsavedChanges, setHasUnsavedChanges] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
-  const [activeSection, setActiveSection] = useState<string>(SECTIONS[0][0]);
-  const [openSections, setOpenSections] = useState<Record<string, boolean>>({});
+  const [view, setView] = useState<ViewId>('itinerary');
+  const [showViewSheet, setShowViewSheet] = useState(false);
+  /** Where each view was scrolled to, so coming back to 行程 lands on the same day again. */
+  const viewScrollRef = useRef<Partial<Record<ViewId, number>>>({});
+  const viewSwitchRef = useRef(false);
   const [showPrintModal, setShowPrintModal] = useState(false);
   const [showImport, setShowImport] = useState(false);
   const [printSections, setPrintSections] = useState<PrintSections>(defaultPrintSections);
@@ -406,50 +421,37 @@ export default function TripView({
     return () => window.removeEventListener('scroll', onScroll);
   }, []);
 
-  /* ── Scroll-spy for section nav ──
-     IntersectionObserver only reports elements whose intersection just changed, so we
-     use it purely as a "something moved" trigger and recompute the active section from
-     every section's live position — otherwise a section that stays intersecting across
-     a navigation (e.g. jumping back to the top) leaves activeSection stale. */
-  useEffect(() => {
-    if (!currentTrip || !state) return;
-    const ids = SECTIONS.map(([id]) => id);
-    const NAV_OFFSET = 150;
-
-    const recompute = () => {
-      let current = ids[0];
-      for (const id of ids) {
-        const el = document.getElementById(id);
-        if (el && el.getBoundingClientRect().top <= NAV_OFFSET) current = id;
-      }
-      setActiveSection(current);
-    };
-
-    const observer = new IntersectionObserver(recompute, { rootMargin: '-150px 0px -65% 0px', threshold: [0, 1] });
-    ids.forEach((id) => {
-      const el = document.getElementById(id);
-      if (el) observer.observe(el);
-    });
-    recompute();
-    return () => observer.disconnect();
-  }, [Boolean(currentTrip), Boolean(state)]);
-
-  /* Nav-pill click: open the target section (if it's collapsible) before scrolling, since a
-     collapsed section has zero height and would make a plain #id jump land in the wrong place.
-     Waits a frame for the expand to paint (mirrors the print flow's double-rAF below). */
-  const jumpToSection = (id: string) => {
-    if (id in COLLAPSIBLE_META) setOpenSections((prev) => ({ ...prev, [id]: true }));
-    requestAnimationFrame(() => requestAnimationFrame(() => {
-      const el = document.getElementById(id);
-      const nav = document.querySelector<HTMLElement>('.trip-nav');
-      const topbar = document.querySelector<HTMLElement>('#app > header');
-      if (!el) return;
-      const navBottom = nav && getComputedStyle(nav).position === 'sticky' ? (parseFloat(getComputedStyle(nav).top) || 0) + nav.offsetHeight : 0;
-      const offset = Math.max(topbar?.offsetHeight ?? 68, navBottom) + 12;
-      const top = el.getBoundingClientRect().top + window.scrollY - offset;
-      window.scrollTo({ top, behavior: 'smooth' });
-    }));
+  /* ── Switching views ──
+     Each view remembers its scroll position. A view opened for the first time starts with its
+     heading just under the sticky bars, rather than back above the trip header. Tapping the
+     current view's tab again scrolls to its top, like most apps. */
+  const switchView = (id: ViewId) => {
+    setShowViewSheet(false);
+    if (id === view) { scrollToViewTop('smooth'); return; }
+    viewScrollRef.current[view] = window.scrollY;
+    viewSwitchRef.current = true;
+    setView(id);
   };
+
+  const scrollToViewTop = (behavior: ScrollBehavior) => {
+    const col = contentRef.current;
+    if (!col) return;
+    const topbar = document.querySelector<HTMLElement>('#app > header')?.offsetHeight ?? 68;
+    const nav = document.querySelector<HTMLElement>('.trip-nav');
+    const navHeight = nav && getComputedStyle(nav).position === 'sticky' ? nav.offsetHeight : 0;
+    const top = col.getBoundingClientRect().top + window.scrollY - topbar - navHeight;
+    if (window.scrollY > top || behavior === 'smooth') window.scrollTo({ top: Math.max(0, top), behavior });
+  };
+
+  useLayoutEffect(() => {
+    if (!viewSwitchRef.current) return;
+    viewSwitchRef.current = false;
+    const saved = viewScrollRef.current[view];
+    if (saved !== undefined) window.scrollTo({ top: saved, behavior: 'instant' });
+    else scrollToViewTop('instant');
+    // The itinerary's day-pill scroll-spy measured hidden (zero-size) cards; let it re-measure.
+    window.dispatchEvent(new Event('scroll'));
+  }, [view]);
 
   useEffect(() => {
     const warnBeforeLeave = (event: BeforeUnloadEvent) => {
@@ -553,7 +555,6 @@ export default function TripView({
 
   const canToggleEdit = !readOnly && ((!shareToken && role === 'owner') || (Boolean(shareToken) && sharePermission === 'edit'));
   const hideCurrency = state.isLocal && !editUnlocked;
-  const navSections = SECTIONS.filter(([id]) => !(id === 'currency' && hideCurrency));
   const total = state.days.reduce((a, d) => a + d.items.length, 0);
   const todayIndex = todayDayIndex(currentTrip.start_date, state.days.length);
   const done  = state.checklist.filter((x) => x.done).length;
@@ -724,25 +725,25 @@ export default function TripView({
         </div>
       </header>
 
-      <nav aria-label="行程目录" className="trip-nav sm:sticky top-[68px] z-40 bg-surface/94 backdrop-blur-md border-b border-line shadow-xs overflow-x-auto">
-        <div className="max-w-[1200px] mx-auto px-3 sm:px-6 flex items-center gap-1 min-w-max">
-          {navSections.map(([id, label]) => (
-            <a
-              key={id}
-              href={`#${id}`}
-              onClick={(e) => { e.preventDefault(); jumpToSection(id); }}
-              className={`px-3.5 py-3 text-[12.5px] font-semibold border-b-2 no-underline transition-colors ${
-                activeSection === id ? 'text-jade border-jade' : 'text-muted border-transparent hover:text-jade hover:border-jade'
+      <nav aria-label="切换页面" className="trip-nav no-print hidden sm:block sticky top-[68px] z-40 bg-surface/94 backdrop-blur-md border-b border-line shadow-xs overflow-x-auto">
+        <div className="max-w-[1200px] mx-auto px-6 flex items-center gap-1 min-w-max">
+          {VIEWS.map((v) => (
+            <button
+              key={v.id}
+              aria-current={view === v.id ? 'page' : undefined}
+              onClick={() => switchView(v.id)}
+              className={`px-3.5 py-3 text-[13px] font-semibold border-b-2 transition-colors ${
+                view === v.id ? 'text-jade border-jade' : 'text-muted border-transparent hover:text-jade hover:border-jade'
               }`}
             >
-              {label}
-            </a>
+              <span aria-hidden="true">{v.icon}</span> {v.label}
+            </button>
           ))}
         </div>
       </nav>
 
       {/* ── Content ── */}
-      <div className="trip-layout max-w-[1200px] mx-auto px-4 sm:px-6 pb-44">
+      <div className={`trip-layout max-w-[1200px] mx-auto px-4 sm:px-6 pb-44${view === 'itinerary' ? '' : ' single'}`}>
         <aside className="trip-sidebar" aria-label="行程侧栏">
           <p className="text-[11px] font-bold tracking-[0.12em] text-muted uppercase mb-2">每天安排</p>
           {state.days.length
@@ -753,39 +754,52 @@ export default function TripView({
             : <p className="text-muted text-[12.5px] px-2.5">还没有安排 Day</p>}
         </aside>
         <div className="min-w-0" ref={contentRef}>
-          <div id="overview" className={`scroll-mt-32${printSections.overview ? '' : ' print-hide'}`}><Dashboard state={state} description={currentTrip.description} total={total} done={done} startDate={currentTrip.start_date} endDate={currentTrip.end_date} weather={weather} todayIndex={todayIndex} /></div>
+          <div className={view === 'itinerary' ? '' : 'view-hidden'}>
+            <div id="overview" className={printSections.overview ? '' : 'print-hide'}><Dashboard state={state} description={currentTrip.description} total={total} done={done} startDate={currentTrip.start_date} endDate={currentTrip.end_date} weather={weather} todayIndex={todayIndex} /></div>
+            <div id="itinerary" className={printSections.itinerary ? '' : 'print-hide'}><DaysSection state={state} editUnlocked={editUnlocked} mutate={mutate} mutateNoSave={mutateNoSave} startDate={currentTrip.start_date} weather={weather} authorName={myPresenceName} showDiscussionInPrint={printSections.notes} todayIndex={todayIndex} destination={currentTrip.destination} /></div>
+          </div>
 
-          <CollapsibleSection id="prepare" icon={COLLAPSIBLE_META.prepare.icon} title={COLLAPSIBLE_META.prepare.title} summary={sectionSummary.prepare} printVisible={printSections.prepare} open={Boolean(openSections.prepare)} onToggle={() => setOpenSections((p) => ({ ...p, prepare: !p.prepare }))}>
-            <Checklist state={state} editUnlocked={editUnlocked} mutate={mutate} canCheck={canCheck} onToggle={toggleCheck} onRequestEdit={canToggleEdit ? toggleEdit : undefined} />
-          </CollapsibleSection>
+          <div className={view === 'prepare' ? '' : 'view-hidden'}>
+            <ViewPanel id="prepare" icon="☑️" title="出发准备" summary={sectionSummary.prepare} printVisible={printSections.prepare}>
+              <Checklist state={state} editUnlocked={editUnlocked} mutate={mutate} canCheck={canCheck} onToggle={toggleCheck} onRequestEdit={canToggleEdit ? toggleEdit : undefined} />
+            </ViewPanel>
+          </div>
 
-          <div id="itinerary" className={`scroll-mt-32${printSections.itinerary ? '' : ' print-hide'}`}><DaysSection state={state} editUnlocked={editUnlocked} mutate={mutate} mutateNoSave={mutateNoSave} startDate={currentTrip.start_date} weather={weather} authorName={myPresenceName} showDiscussionInPrint={printSections.notes} todayIndex={todayIndex} destination={currentTrip.destination} /></div>
+          <div className={view === 'stay' ? '' : 'view-hidden'}>
+            <ViewPanel id="stay" icon="🏨" title="住宿" summary={sectionSummary.stay} printVisible={printSections.stay}>
+              <HotelsSection state={state} editUnlocked={editUnlocked} mutate={mutate} authorName={myPresenceName} printOnlyIndex={printHotelFilter === 'all' ? null : printHotelFilter} showDiscussionInPrint={printSections.notes} />
+            </ViewPanel>
+          </div>
 
-          <CollapsibleSection id="stay" icon={COLLAPSIBLE_META.stay.icon} title={COLLAPSIBLE_META.stay.title} summary={sectionSummary.stay} printVisible={printSections.stay} open={Boolean(openSections.stay)} onToggle={() => setOpenSections((p) => ({ ...p, stay: !p.stay }))}>
-            <HotelsSection state={state} editUnlocked={editUnlocked} mutate={mutate} authorName={myPresenceName} printOnlyIndex={printHotelFilter === 'all' ? null : printHotelFilter} showDiscussionInPrint={printSections.notes} />
-          </CollapsibleSection>
+          {/* 汇率 lives with 预算: the rate only matters for the amounts there. */}
+          <div className={view === 'budget' ? '' : 'view-hidden'}>
+            <ViewPanel id="budget" icon="💰" title="预算" summary={sectionSummary.budget} printVisible={printSections.budget}>
+              <BudgetSection state={state} editUnlocked={editUnlocked} mutate={mutate} currency={currentTrip.home_currency} />
+            </ViewPanel>
+            {!hideCurrency && (
+              <ViewPanel id="currency" icon="💱" title="货币换算" summary={sectionSummary.currency} printVisible={printSections.currency && !state.isLocal}>
+                <CurrencySection state={state} homeCurrency={currentTrip.home_currency} editUnlocked={editUnlocked} mutate={mutate} />
+              </ViewPanel>
+            )}
+          </div>
 
-          {!hideCurrency && (
-            <CollapsibleSection id="currency" icon={COLLAPSIBLE_META.currency.icon} title={COLLAPSIBLE_META.currency.title} summary={sectionSummary.currency} printVisible={printSections.currency && !state.isLocal} open={Boolean(openSections.currency)} onToggle={() => setOpenSections((p) => ({ ...p, currency: !p.currency }))}>
-              <CurrencySection state={state} homeCurrency={currentTrip.home_currency} editUnlocked={editUnlocked} mutate={mutate} />
-            </CollapsibleSection>
-          )}
+          <div className={view === 'transport' ? '' : 'view-hidden'}>
+            <ViewPanel id="transport" icon="🚐" title="交通参考" summary={sectionSummary.transport} printVisible={printSections.transport}>
+              <TransportSection state={state} editUnlocked={editUnlocked} mutate={mutate} homeCurrency={currentTrip.home_currency} printOnlyIndex={printTransportFilter === 'all' ? null : printTransportFilter} />
+            </ViewPanel>
+          </div>
 
-          <CollapsibleSection id="transport" icon={COLLAPSIBLE_META.transport.icon} title={COLLAPSIBLE_META.transport.title} summary={sectionSummary.transport} printVisible={printSections.transport} open={Boolean(openSections.transport)} onToggle={() => setOpenSections((p) => ({ ...p, transport: !p.transport }))}>
-            <TransportSection state={state} editUnlocked={editUnlocked} mutate={mutate} homeCurrency={currentTrip.home_currency} printOnlyIndex={printTransportFilter === 'all' ? null : printTransportFilter} />
-          </CollapsibleSection>
+          <div className={view === 'notes' ? '' : 'view-hidden'}>
+            <ViewPanel id="notes" icon="💬" title="留言板" summary={sectionSummary.notes} printVisible={printSections.notes}>
+              <NotesSection state={state} editUnlocked={editUnlocked} mutate={mutate} authorName={myPresenceName} />
+            </ViewPanel>
+          </div>
 
-          <CollapsibleSection id="budget" icon={COLLAPSIBLE_META.budget.icon} title={COLLAPSIBLE_META.budget.title} summary={sectionSummary.budget} printVisible={printSections.budget} open={Boolean(openSections.budget)} onToggle={() => setOpenSections((p) => ({ ...p, budget: !p.budget }))}>
-            <BudgetSection state={state} editUnlocked={editUnlocked} mutate={mutate} currency={currentTrip.home_currency} />
-          </CollapsibleSection>
-
-          <CollapsibleSection id="notes" icon={COLLAPSIBLE_META.notes.icon} title={COLLAPSIBLE_META.notes.title} summary={sectionSummary.notes} printVisible={printSections.notes} open={Boolean(openSections.notes)} onToggle={() => setOpenSections((p) => ({ ...p, notes: !p.notes }))}>
-            <NotesSection state={state} editUnlocked={editUnlocked} mutate={mutate} authorName={myPresenceName} />
-          </CollapsibleSection>
-
-          <CollapsibleSection id="attachments" icon={COLLAPSIBLE_META.attachments.icon} title={COLLAPSIBLE_META.attachments.title} summary={sectionSummary.attachments} printVisible={printSections.attachments} open={Boolean(openSections.attachments)} onToggle={() => setOpenSections((p) => ({ ...p, attachments: !p.attachments }))}>
-            <AttachmentsSection state={state} editUnlocked={editUnlocked} mutate={mutate} />
-          </CollapsibleSection>
+          <div className={view === 'attachments' ? '' : 'view-hidden'}>
+            <ViewPanel id="attachments" icon="📎" title="附件与资料" summary={sectionSummary.attachments} printVisible={printSections.attachments}>
+              <AttachmentsSection state={state} editUnlocked={editUnlocked} mutate={mutate} />
+            </ViewPanel>
+          </div>
         </div>
       </div>
 
@@ -809,7 +823,7 @@ export default function TripView({
 
       {/* ── Floating actions: always reachable, so switching modes doesn't need a trip back to the header.
              The edit toggle sits at the bottom and never moves; save appears above it while editing. ── */}
-      <div className="no-print fixed right-4 bottom-4 sm:right-5 sm:bottom-5 z-[60] flex flex-col items-end gap-2.5">
+      <div className="no-print fab-stack fixed right-4 sm:right-5 z-[60] flex flex-col items-end gap-2.5">
         {showTop && <button className="btn-primary rounded-full shadow-md" onClick={() => window.scrollTo({ top: 0, behavior: 'smooth' })} aria-label="回到顶部">↑<span className="hidden sm:inline"> 顶部</span></button>}
         {editUnlocked && (
           <button
@@ -836,6 +850,46 @@ export default function TripView({
           </button>
         )}
       </div>
+
+      {/* ── Phones: bottom tab bar. 其他 opens a sheet with the remaining views (named differently from
+             the header's ⋯ 更多, which holds actions, not pages). ── */}
+      {showViewSheet && (
+        <div className="no-print sm:hidden fixed inset-0 z-[56]" role="dialog" aria-label="其他页面">
+          <button className="absolute inset-0 bg-ink/30 animate-fade-in" aria-label="关闭" onClick={() => setShowViewSheet(false)} />
+          <div className="tabbar-sheet absolute inset-x-0 bg-surface rounded-t-xl shadow-lg border-t border-line px-2 pt-2 pb-3 animate-slide-up">
+            <div className="mx-auto mb-1.5 h-1 w-10 rounded-full bg-line-strong" aria-hidden="true" />
+            {VIEWS.filter((v) => !PHONE_TABS.includes(v.id)).map((v) => (
+              <button key={v.id} onClick={() => switchView(v.id)} aria-current={view === v.id ? 'page' : undefined}
+                className={`w-full flex items-center gap-3 px-3 py-3 rounded text-left ${view === v.id ? 'bg-jade-light' : 'hover:bg-surface-2'}`}>
+                <span className="text-[22px] leading-none" aria-hidden="true">{v.icon}</span>
+                <span className="min-w-0 flex-1">
+                  <span className={`block text-[15px] font-semibold ${view === v.id ? 'text-jade-dark' : 'text-ink'}`}>{v.title}</span>
+                  <span className="block text-[12px] text-muted truncate">{sectionSummary[v.id]}</span>
+                </span>
+                <span className="text-muted" aria-hidden="true">›</span>
+              </button>
+            ))}
+          </div>
+        </div>
+      )}
+      <nav aria-label="切换页面" className="tabbar no-print sm:hidden fixed inset-x-0 bottom-0 z-[57] bg-surface/96 backdrop-blur-md border-t border-line shadow-[0_-2px_12px_rgba(24,39,30,0.06)]">
+        <div className="grid grid-cols-5">
+          {[...PHONE_TABS.map((id) => VIEWS.find((v) => v.id === id)!), null].map((v) => {
+            const active = v ? view === v.id : !PHONE_TABS.includes(view) || showViewSheet;
+            return (
+              <button key={v?.id ?? 'more'}
+                onClick={() => (v ? switchView(v.id) : setShowViewSheet((x) => !x))}
+                aria-current={v && view === v.id ? 'page' : undefined}
+                aria-expanded={v ? undefined : showViewSheet}
+                className={`min-h-[56px] flex flex-col items-center justify-center gap-0.5 text-[11px] font-semibold transition-colors ${active ? 'text-jade-dark' : 'text-muted'}`}>
+                <span className={`text-[19px] leading-none ${active ? '' : 'opacity-70 grayscale'}`} aria-hidden="true">{v ? v.icon : '☰'}</span>
+                {v ? v.label : (PHONE_TABS.includes(view) ? '其他' : VIEWS.find((x) => x.id === view)!.label)}
+                <span className={`h-[3px] w-5 rounded-full mt-0.5 ${active ? 'bg-jade' : 'bg-transparent'}`} aria-hidden="true" />
+              </button>
+            );
+          })}
+        </div>
+      </nav>
 
       {showSettings && (
         <SettingsModal
