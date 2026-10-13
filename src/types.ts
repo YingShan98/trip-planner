@@ -40,6 +40,8 @@ export interface Day {
   intensity: Intensity;
   steps: string;
   mapUrl: string;
+  /** Where the group sleeps that night, usually a `Hotel.name` from TripState.hotels; '' if none (e.g. the flight home). */
+  hotel: string;
   items: Activity[];
   notes: string;
 }

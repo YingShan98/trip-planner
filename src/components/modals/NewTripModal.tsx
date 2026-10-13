@@ -42,7 +42,15 @@ export default function NewTripModal({ onClose, onCreated }: {
 
   const downloadTemplate = () => {
     downloadJSON('trip-template.json', {
-      meta: { title: '旅行名称', destination: '目的地', start_date: '2027-01-01', end_date: '2027-01-07', currency: 'MYR', description: '旅行简介', variant: '示例：relaxed', audience: '示例：年长人士／行动不便人士' },
+      // Ignored on import (only `meta` and `data` are read) — the format notes JSON can't carry as comments.
+      _说明: [
+        'days[].hotel：当晚住宿，填 hotels 里某个酒店的 name（一字不差），每天结尾会显示住宿卡片；最后一天回家留空。',
+        'days[].items[].place：可搜索的地点名称或地址，也可直接粘贴 Google 地图 / 高德地图链接；地图和路线都靠它。',
+        'days[].items[].move：怎么去这一站。多个方案各占一行，格式「emoji 方式：A > B > C ⏱️ 约N分钟」，会变成可切换的选项；「A > B > C」会显示成站点列表；⚠️ 开头的行是提示。',
+        'days[].mapUrl：当天地图，填地点名称，或粘贴 Google 地图 / 高德地图链接。',
+        'hotels[].addr：填完整中文地址，地图和路线才会定位到正确的酒店。',
+      ],
+      meta: { title: '旅行名称', destination: '目的地', start_date: '2027-01-01', end_date: '2027-01-02', currency: 'MYR', description: '旅行简介', variant: '示例：relaxed', audience: '示例：年长人士／行动不便人士' },
       data: templateState(),
     });
   };

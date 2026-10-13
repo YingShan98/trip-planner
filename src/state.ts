@@ -4,7 +4,7 @@ export const uid = (p: string) => p + '_' + Math.random().toString(36).slice(2, 
 
 export function blankState(): TripState {
   return {
-    days: [{ n: 1, title: 'Day 1', intensity: 'light', steps: '', mapUrl: '', items: [], notes: '' }],
+    days: [{ n: 1, title: 'Day 1', intensity: 'light', steps: '', mapUrl: '', hotel: '', items: [], notes: '' }],
     checklist: [],
     packing: [],
     hotels: [],
@@ -29,7 +29,7 @@ export function parseTravelerCount(v: number | string | null | undefined): numbe
 }
 
 export function defaultDay(n: number): Day {
-  return { n, title: `Day ${n}`, intensity: 'light', steps: '', mapUrl: '', items: [], notes: '' };
+  return { n, title: `Day ${n}`, intensity: 'light', steps: '', mapUrl: '', hotel: '', items: [], notes: '' };
 }
 
 export function defaultActivity(): Activity {
@@ -56,15 +56,21 @@ export function templateState(): TripState {
         title: 'Day 1',
         intensity: 'light',
         steps: '示例：步行约 2 小时，适合大部分体力',
+        // A place name / address, or a pasted Google 地图 or 高德地图 link.
         mapUrl: '花城广场',
-        /* Each stop's `move` describes how to get TO it (the first stop's is the departure leg);
-           `place` must be a real searchable name — it drives the map and directions links. */
+        /* Where everyone sleeps tonight. Use a hotel's exact `name` from `hotels` below, so the
+           end-of-day card can show its address and the day's route can end there. */
+        hotel: '广州花园酒店',
+        /* Each stop's `move` describes how to get TO it (the first stop's is the departure leg).
+           Several ways there? One per line, "emoji 方式：A > B > C ⏱️ 约N分钟" — they become
+           switchable tabs, and "A > B > C" shows as a list of stations.
+           `place` must be a real searchable name (or a pasted map link) — it drives the maps and routes. */
         items: [
           {
             t: '09:00–11:00',
             x: '示例：广东省博物馆（免费，须提前预约）',
             place: '广东省博物馆',
-            move: '示例：从酒店打车约 20 分钟',
+            move: '🚐 打车：酒店 > 🚕 > 广东省博物馆 ⏱️ 约20分钟\n🚇 地铁：淘金站 > 🚇5号线（往文冲方向）- 4站 > 🚇珠江新城站换乘APM线 - 2站 > 🚇大剧院站 > 🚶广东省博物馆 ⏱️ 约35分钟',
             fee: '示例：免费',
             link: [{ label: '官网', url: 'https://example.com' }],
             visitHours: '示例：09:00–17:00（16:00 停止入场）',
@@ -80,7 +86,7 @@ export function templateState(): TripState {
             t: '14:00–15:00',
             x: '示例：花城广场散步',
             place: '花城广场',
-            move: '示例：步行约 15 分钟',
+            move: '🚶 广东省博物馆 > 海心沙 > 花城广场 ⏱️ 约15分钟',
             fee: '示例：免费',
             link: [],
             visitHours: '示例：全天开放',
@@ -96,7 +102,7 @@ export function templateState(): TripState {
             t: '18:00–19:30',
             x: '示例：广州塔观景台看夜景',
             place: '广州塔',
-            move: '示例：地铁 APM 线 1 站，或步行约 20 分钟',
+            move: '🚇 地铁：花城大道站 > 🚇APM线 - 2站 > 🚇广州塔站 ⏱️ 约10分钟\n🚶 步行：沿中轴线过海心桥 ⏱️ 约20分钟',
             fee: '示例：RM 50/人',
             link: [],
             visitHours: '示例：09:30–22:30',
@@ -111,14 +117,59 @@ export function templateState(): TripState {
         ],
         notes: '示例：老人可在附近咖啡厅休息',
       },
+      {
+        n: 2,
+        title: '示例：返程',
+        intensity: 'light',
+        steps: '',
+        mapUrl: '',
+        // Last day, flying home: no hotel tonight, so leave it empty.
+        hotel: '',
+        items: [
+          {
+            t: '12:00–13:00',
+            x: '示例：最后午餐',
+            place: '北京路步行街',
+            move: '🚶 酒店 > 北京路 ⏱️ 约15分钟',
+            fee: '',
+            link: [],
+            visitHours: '',
+            closedDays: '',
+            recommendedWeekdays: '',
+            imageUrl: '',
+            duration: '约1小时',
+            accessibility: '',
+            alternative: '',
+            earlyExit: '',
+          },
+          {
+            t: '15:30',
+            x: '示例：抵达白云机场 T3，办理登机',
+            place: '广州白云国际机场T3航站楼',
+            move: '🚐 包车：酒店 > 🚕 > 白云机场T3（2台车） ⏱️ 约40–60分钟\n🚇 地铁：北京路站 > 🚇6号线 > 🚇海珠广场站换乘2号线 > 🚇嘉禾望岗站换乘3号线 > 🚇高增站换乘空港2线支线 > ✈️ T3 ⏱️ 约80分钟\n⚠️ 务必确认航站楼',
+            fee: '',
+            link: [],
+            visitHours: '',
+            closedDays: '',
+            recommendedWeekdays: '',
+            imageUrl: '',
+            duration: '',
+            accessibility: '',
+            alternative: '',
+            earlyExit: '',
+          },
+        ],
+        notes: '',
+      },
     ],
     checklist: [{ id: uid('c'), text: '示例：确认护照有效期', done: false, category: '证件与签证' }],
     packing: [],
     hotels: [
       {
         rank: '首选',
-        name: '示例酒店名称',
-        addr: '示例地址 / 地铁站',
+        // `name` is what each day's `hotel` refers to; a full Chinese address keeps maps on the right building.
+        name: '广州花园酒店',
+        addr: '广州市越秀区环市东路368号',
         warn: '示例：入住需信用卡预授权',
         pointsText: '优点：地理位置好\n缺点：价格较高',
         link: [{ label: '预订链接', url: 'https://example.com' }],

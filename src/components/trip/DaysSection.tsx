@@ -1,8 +1,8 @@
 import { useEffect, useLayoutEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react';
 import { defaultActivity, defaultDay } from '../../state';
-import type { Activity, Day, Intensity, Mutate, TripState } from '../../types';
+import type { Activity, Day, Hotel, Intensity, Mutate, TripState } from '../../types';
 import { confirmDialog } from '../../lib/confirm';
-import { amapSearchUrl, googleDirectionsUrl, googleMapsSearchUrl, toMapEmbedSrc } from '../../lib/mapEmbed';
+import { amapSearchUrl, googleDirectionsUrl, googleMapsSearchUrl, googleRouteEmbedSrc, googleRouteUrl, mapLinkKind, mapLinkLabel, MAX_ROUTE_STOPS, searchablePlace, toMapEmbedSrc } from '../../lib/mapEmbed';
 import { getRoutePref, parseRouteOptions, setRoutePref, subscribeRoutePref, transitMode, type RouteOption } from '../../lib/routeOptions';
 import { dayDate, formatDateWithWeekday } from '../../lib/format';
 import { weatherEmoji, type WeatherResult } from '../../lib/weather';
@@ -10,6 +10,8 @@ import MarkdownText from '../MarkdownText';
 import CommentThread from './CommentThread';
 import { parseTimeRange, formatTimeRange } from '../../lib/activityTime';
 import AutoGrowTextarea from '../AutoGrowTextarea';
+import AmapRoute, { AMAP_MAX_STOPS, type AmapMode } from './AmapRoute';
+import { hasAmap } from '../../lib/amap';
 const intensityLabel = (i: Intensity) => i === 'light' ? '轻松' : i === 'medium' ? '中等' : '较累';
 const intensityClass = (i: Intensity) =>
   i === 'light'  ? 'bg-[#e5f4ec] text-[#2a7d52] border-[#b8ddc7]' :
@@ -97,10 +99,10 @@ function ActivityRow({ a, di, ai, total, editUnlocked, mutate }: {
       </div>
       {editUnlocked && (
         <div className="flex gap-2 items-center mb-2">
-          <AutoGrowTextarea className="inp editable flex-1" value={a.place} placeholder="📍 地点名称或地址（用于地图/路线），如 广东省博物馆"
+          <AutoGrowTextarea className="inp editable flex-1" value={a.place} placeholder="📍 地点名称或地址（用于地图/路线），如 广东省博物馆；也可粘贴 Google / 高德地图链接"
             onChange={(v) => mutate((d) => { d.days[di].items[ai].place = v; })} />
           {a.place.trim() && (
-            <a href={googleMapsSearchUrl(a.place)} target="_blank" rel="noopener noreferrer"
+            <a href={searchablePlace(a.place) ? googleMapsSearchUrl(a.place) : a.place.trim()} target="_blank" rel="noopener noreferrer"
               className="btn-mini edit-only shrink-0 no-underline hover:no-underline">核对位置 ↗</a>
           )}
         </div>
@@ -219,17 +221,44 @@ function RouteDetails({ option }: { option: RouteOption }) {
   );
 }
 
+/** How 高德 should draw a leg, from the kind of transport the leg's text (or chosen route tab) names. */
+function amapLegMode(modeLabel: string): AmapMode {
+  if (modeLabel === '步行') return 'walking';
+  if (modeLabel === '地铁' || modeLabel === '公交') return 'transit';
+  if (modeLabel === '火车' || modeLabel === '航班' || modeLabel === '乘船') return 'line';
+  return 'driving';
+}
+
 /**
  * Leg leading to a stop: its `move` text, plus a Google Maps directions link when the stop has a
  * `place` (from the previous stop's place, or from the viewer's location for the day's first stop).
  * When the text lists several routes ("🚐 包车：…" / "🚇 公共交通：…") they become tabs.
  */
-function TransitConnector({ text, first, to, from }: { text: string; first: boolean; to: string; from: string }) {
+function TransitConnector({ text, first, to, from, previewFrom, cityHint }: {
+  text: string; first: boolean; to: string; from: string; cityHint: string;
+  /** Start point for the map preview: `from`, or last night's hotel for the day's first leg. */
+  previewFrom: string;
+}) {
   const [open, setOpen] = useState(false);
+  const [showPreview, setShowPreview] = useState(false);
   const { notes, options } = useMemo(() => parseRouteOptions(text), [text]);
   const multi = options.length >= 2;
   const [chosen, chooseRoute] = useRouteChoice(options);
   const route = multi ? options[chosen] : null;
+
+  // Only walking or driving can be drawn in China (no transit data there); anything else previews as driving.
+  const previewMode = (route?.mode ?? transitMode(text)).travelMode === 'walking' ? 'walking' : 'driving';
+  const previewSrc = to.trim() && previewFrom.trim() && previewFrom.trim() !== to.trim()
+    ? googleRouteEmbedSrc([previewFrom, to], previewMode) : null;
+  const googleLeg = previewSrc && (
+    <>
+      <iframe src={previewSrc} className="w-full border-0 block" style={{ height: '220px' }} loading="lazy"
+        referrerPolicy="no-referrer-when-downgrade" title={`${previewFrom} → ${to} 路线`} allowFullScreen />
+      <p className="px-2.5 py-1.5 m-0 text-[11px] text-muted">
+        {previewFrom} → {to} · {previewMode === 'walking' ? '步行' : '驾车'}路线（Google 在中国大陆不提供地铁/公交路线）
+      </p>
+    </>
+  );
 
   /* Picking a route switches every stop on the page, and the ones above can change height (one line of
      text ⇄ a list of stops). Keep the tapped tab row where it was on screen — not every browser
@@ -289,7 +318,7 @@ function TransitConnector({ text, first, to, from }: { text: string; first: bool
             <MarkdownText text={text} className="inline !text-[12.5px] !text-muted !leading-relaxed [&>p]:inline" />
           </div>
         )}
-        {((long && !multi) || directions) && (
+        {((long && !multi) || directions || previewSrc) && (
           <div className="no-print flex flex-wrap items-center gap-x-3 gap-y-1.5 mt-1.5 text-[12px] font-medium">
             {long && !multi && (
               <button className="text-jade hover:underline" aria-expanded={open} onClick={() => setOpen((v) => !v)}>
@@ -302,6 +331,19 @@ function TransitConnector({ text, first, to, from }: { text: string; first: bool
                 🧭 {multi ? `${mode.label}路线` : '路线'}{from.trim() ? '' : '（从当前位置）'} ↗
               </a>
             )}
+            {previewSrc && (
+              <button className={`btn-mini ${showPreview ? 'bg-jade-dark !text-white border-jade-dark' : '!text-jade'}`}
+                aria-expanded={showPreview} onClick={() => setShowPreview((v) => !v)}>
+                🗺️ {showPreview ? '收起预览' : '预览路线'}
+              </button>
+            )}
+          </div>
+        )}
+        {showPreview && previewSrc && (
+          <div className="no-print mt-2 rounded-sm overflow-hidden border border-line bg-surface-2">
+            {/* 高德 when configured (works on a Chinese SIM, and plans 地铁/公交); Google otherwise. */}
+            <AmapRoute stops={[previewFrom, to]} mode={amapLegMode(mode.label)} cityHint={cityHint} height={220}
+              fallback={googleLeg} />
           </div>
         )}
       </div>
@@ -353,7 +395,7 @@ function ItineraryStop({ a, index }: { a: Activity; index: number }) {
             </div>
             {a.t && showImage && <span className="pill shrink-0 !py-0.5 !text-[11.5px]">{a.t}</span>}
           </div>
-          {a.place.trim() && (
+          {a.place.trim() && (searchablePlace(a.place) ? (
             <div className="mt-1 flex flex-wrap items-baseline gap-x-2 text-[12px]">
               <span className="text-ink-2 min-w-0">📍 {a.place.trim()}</span>
               <span className="no-print flex gap-1.5 mt-1">
@@ -361,7 +403,14 @@ function ItineraryStop({ a, index }: { a: Activity; index: number }) {
                 <a href={amapSearchUrl(a.place)} target="_blank" rel="noopener noreferrer" className="btn-mini !text-jade no-underline hover:no-underline">高德 ↗</a>
               </span>
             </div>
-          )}
+          ) : (
+            // A pasted map link: one button that opens it, in 高德 or Google Maps as the link says.
+            <div className="no-print mt-1.5">
+              <a href={a.place.trim()} target="_blank" rel="noopener noreferrer" className="btn-mini !text-jade no-underline hover:no-underline">
+                📍 {mapLinkLabel(mapLinkKind(a.place))} ↗
+              </a>
+            </div>
+          ))}
           <dl className="mt-1.5 space-y-0.5 text-[12.5px] text-ink-2">
             {([
               ['建议游玩', a.duration, ''],
@@ -407,14 +456,66 @@ function ItineraryStop({ a, index }: { a: Activity; index: number }) {
   );
 }
 
-function DayCard({ d, i, total, collapsed, isToday, editUnlocked, mutate, mutateNoSave, date, dayWeather, state, authorName, showDiscussionInPrint }: {
+/** Where a day's hotel is, for maps: the matching candidate's address when it has one — chain hotel
+ *  names are ambiguous (Google put "James Joyce Coffetel Hotel" at another branch across town) —
+ *  else the name. '' when there's no hotel or it's a pasted link. */
+function hotelLocation(name: string, hotels: Hotel[]): string {
+  const addr = hotels.find((h) => h.name.trim() === name.trim())?.addr.trim();
+  return searchablePlace(addr || name);
+}
+
+/** End-of-day card: where the group sleeps tonight, with the address and map/directions links when it
+ *  matches one of the trip's hotel candidates by name. */
+function DayHotel({ name, hotels }: { name: string; hotels: Hotel[] }) {
+  const hotel = hotels.find((h) => h.name.trim() === name.trim());
+  const addr = hotel?.addr.trim() || '';
+  const where = hotelLocation(name, hotels) || name.trim();
+  return (
+    <div className="mt-3.5 flex gap-3 items-start rounded border-[1.5px] border-jade-tint bg-jade-light px-3.5 py-3 print-keep">
+      <span className="text-[22px] leading-none mt-0.5" aria-hidden="true">🏨</span>
+      <div className="min-w-0 flex-1">
+        <span className="rich-label !text-jade">今晚住宿</span>
+        <strong className="block font-serif text-[15.5px] text-jade-dark leading-snug break-words">{name.trim()}</strong>
+        {addr && <div className="text-[12.5px] text-ink-2 mt-0.5 break-words">📍 {addr}</div>}
+        <div className="no-print flex flex-wrap gap-1.5 mt-2">
+          <a href={googleDirectionsUrl(where)} target="_blank" rel="noopener noreferrer" className="btn-mini !text-jade no-underline hover:no-underline">🧭 回酒店 ↗</a>
+          <a href={googleMapsSearchUrl(where)} target="_blank" rel="noopener noreferrer" className="btn-mini !text-jade no-underline hover:no-underline">Google 地图 ↗</a>
+          <a href={amapSearchUrl(where)} target="_blank" rel="noopener noreferrer" className="btn-mini !text-jade no-underline hover:no-underline">高德 ↗</a>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function DayCard({ d, i, total, collapsed, isToday, editUnlocked, mutate, mutateNoSave, date, dayWeather, state, authorName, showDiscussionInPrint, cityHint }: {
+  cityHint: string;
   d: Day; i: number; total: number; collapsed: boolean; isToday: boolean;
   editUnlocked: boolean; mutate: Mutate; mutateNoSave: Mutate;
   date: string | null; dayWeather?: { tMax: number; tMin: number; precipProb: number; code: number };
   state: TripState; authorName: string; showDiscussionInPrint: boolean;
 }) {
   const [showMap, setShowMap] = useState(false);
+  const [mapTab, setMapTab] = useState<'route' | 'map'>('route');
   const embedSrc = d.mapUrl ? toMapEmbedSrc(d.mapUrl) : null;
+  /* A 高德 link opens straight in 高德 (its share pages can't be previewed); a Google link or a plain
+     place name gets the embedded Google map preview. */
+  const mapKind = mapLinkKind(d.mapUrl);
+  const mapOpenUrl = mapKind === 'place' ? googleMapsSearchUrl(d.mapUrl) : d.mapUrl.trim();
+
+  /* The day's route: from last night's hotel, through every stop with a searchable 📍 place, to tonight's
+     hotel. Repeats in a row (several stops inside one park) collapse into one. */
+  const lastNightHotel = i > 0 ? hotelLocation(state.days[i - 1].hotel, state.hotels) : '';
+  const allStops = [lastNightHotel, ...d.items.map((a) => searchablePlace(a.place)), hotelLocation(d.hotel, state.hotels)]
+    .filter(Boolean)
+    .filter((s, k, all) => k === 0 || s !== all[k - 1]);
+  const routeSrc = googleRouteEmbedSrc(allStops);
+  const routeLimit = hasAmap ? AMAP_MAX_STOPS : MAX_ROUTE_STOPS;
+  // Used when 高德 isn't configured or fails to load.
+  const googleDayRoute = routeSrc && (
+    <iframe src={routeSrc} className="w-full border-0 block" style={{ height: '320px' }} loading="lazy"
+      referrerPolicy="no-referrer-when-downgrade" title={`${d.title} 路线`} allowFullScreen />
+  );
+  const tab = routeSrc && (mapTab === 'route' || !embedSrc) ? 'route' : 'map';
 
   const moveDay = (delta: number) => {
     const j = i + delta;
@@ -452,12 +553,17 @@ function DayCard({ d, i, total, collapsed, isToday, editUnlocked, mutate, mutate
         ) : <h3 className="flex-1 min-w-[140px] font-bold text-[15px] font-serif py-1">{d.title}</h3>}
         <span className={`pill border ${intensityClass(d.intensity)}`}>{intensityLabel(d.intensity)}</span>
         <div className="flex gap-1.5 ml-auto">
-          {d.mapUrl && (
+          {d.mapUrl.trim() && !embedSrc && !routeSrc ? (
+            <a href={mapOpenUrl} target="_blank" rel="noopener noreferrer"
+              className="no-print btn-mini flex items-center gap-1 no-underline hover:no-underline">
+              🗺️ {mapKind === 'amap' ? '高德地图' : mapKind === 'google' ? 'Google 地图' : '打开地图'} ↗
+            </a>
+          ) : (embedSrc || routeSrc) && (
             <button
               className={`no-print btn-mini flex items-center gap-1 ${showMap ? 'bg-jade-dark !text-white border-jade-dark' : ''}`}
               onClick={() => setShowMap((v) => !v)}
             >
-              🗺️ {showMap ? '收起地图' : '查看地图'}
+              🗺️ {showMap ? '收起地图' : routeSrc ? '路线地图' : '查看地图'}
             </button>
           )}
           <button className="no-print btn-mini" aria-expanded={!collapsed}
@@ -486,37 +592,52 @@ function DayCard({ d, i, total, collapsed, isToday, editUnlocked, mutate, mutate
       </div>
 
       {/* Map panel — independent of collapse, shown when toggled */}
-      {showMap && d.mapUrl && (
+      {showMap && (embedSrc || routeSrc) && (
         <div className="no-print border-b border-line">
-          <div className="flex items-center justify-between px-4 py-1.5 bg-surface-2 border-b border-dashed border-line">
-            <span className="text-[11.5px] text-muted">地图预览</span>
-            <a
-              href={d.mapUrl}
-              target="_blank"
-              rel="noopener noreferrer"
-              className="text-jade text-[12px] hover:underline"
-            >
-              ↗ 在新标签页打开
-            </a>
+          <div className="flex items-center justify-between gap-2 flex-wrap px-4 py-1.5 bg-surface-2 border-b border-dashed border-line">
+            {routeSrc && embedSrc ? (
+              <span role="tablist" aria-label="地图类型" className="flex gap-1">
+                {([['route', '当天路线'], ['map', '地图']] as const).map(([id, label]) => (
+                  <button key={id} role="tab" aria-selected={tab === id} onClick={() => setMapTab(id)}
+                    className={`rounded-full px-2.5 py-0.5 text-[12px] font-semibold border ${tab === id ? 'bg-jade-dark border-jade-dark text-white' : 'bg-surface border-line text-ink-2'}`}>
+                    {label}
+                  </button>
+                ))}
+              </span>
+            ) : <span className="text-[11.5px] text-muted">{tab === 'route' ? '当天路线' : '地图预览'}</span>}
+            <span className="flex gap-3">
+              {tab === 'route' ? (
+                <a href={googleRouteUrl(allStops)} target="_blank" rel="noopener noreferrer" className="text-jade text-[12px] hover:underline">↗ 在 Google 地图打开</a>
+              ) : (
+                <a href={mapOpenUrl} target="_blank" rel="noopener noreferrer" className="text-jade text-[12px] hover:underline">
+                  ↗ {mapKind === 'other' ? '在新标签页打开' : '在 Google 地图打开'}
+                </a>
+              )}
+              {mapKind === 'place' && tab === 'map' && (
+                <a href={amapSearchUrl(d.mapUrl)} target="_blank" rel="noopener noreferrer" className="text-jade text-[12px] hover:underline">↗ 高德</a>
+              )}
+              {d.mapUrl.trim() && !embedSrc && (
+                <a href={mapOpenUrl} target="_blank" rel="noopener noreferrer" className="text-jade text-[12px] hover:underline">
+                  ↗ {mapKind === 'amap' ? '高德地图' : '当天地图'}
+                </a>
+              )}
+            </span>
           </div>
-          {embedSrc ? (
-            <iframe
-              src={embedSrc}
-              className="w-full border-0 block"
-              style={{ height: '260px' }}
-              loading="lazy"
-              referrerPolicy="no-referrer-when-downgrade"
-              title={`${d.title} 地图`}
-              allowFullScreen
-            />
+          {tab === 'route' ? (
+            <>
+              <AmapRoute stops={allStops} mode="driving" cityHint={cityHint} height={320} fallback={googleDayRoute} />
+              <p className="px-4 py-2 m-0 text-[11.5px] text-muted bg-surface-2 border-t border-dashed border-line">
+                {allStops.slice(0, routeLimit).map((s, k) => `${k + 1}. ${s}`).join(' → ')}
+                {allStops.length > routeLimit && `（一条路线最多 ${routeLimit} 个地点，后面 ${allStops.length - routeLimit} 个未画出）`}
+                <span className="block mt-0.5">
+                  {hasAmap ? '高德驾车路线；地铁/公交请点各段交通的「预览路线」。' : '图中为驾车路线：Google 在中国大陆不提供地铁/公交路线，且需漫游或 VPN 才能加载。'}
+                </span>
+              </p>
+            </>
           ) : (
-            <p className="px-4 py-6 text-[13px] text-muted text-center">
-              这个链接暂时无法直接预览，点击上方「在新标签页打开」查看。
-            </p>
+            <iframe src={embedSrc ?? undefined} className="w-full border-0 block" style={{ height: '260px' }} loading="lazy"
+              referrerPolicy="no-referrer-when-downgrade" title={`${d.title} 地图`} allowFullScreen />
           )}
-          <p className="px-4 py-2 text-[11px] text-muted bg-surface-2 border-t border-dashed border-line">
-            提示：可直接填写地址或地点名称（如「东京塔」），也可粘贴 Google Maps 链接。
-          </p>
         </div>
       )}
 
@@ -536,12 +657,24 @@ function DayCard({ d, i, total, collapsed, isToday, editUnlocked, mutate, mutate
                 onChange={(v) => mutate((s) => { s.days[i].steps = v; })} />
             ) : d.steps ? <div className="rich-field flex-1 min-w-[180px]"><span className="rich-label">步行提示</span><MarkdownText text={d.steps} /></div> : null}
             {editUnlocked ? (
-              <input
-                className="inp editable flex-1 min-w-[180px]"
-                value={d.mapUrl}
-                placeholder="地址 / 地点名称，或粘贴 Google Maps 链接"
-                onChange={(e) => mutate((s) => { s.days[i].mapUrl = e.target.value; })}
-              />
+              <div className="flex-1 min-w-[180px]">
+                <input
+                  className="inp editable"
+                  value={d.mapUrl}
+                  placeholder="当天地图：地址 / 地点名称，或粘贴 Google 地图 / 高德地图链接"
+                  onChange={(e) => mutate((s) => { s.days[i].mapUrl = e.target.value; })}
+                />
+                {d.mapUrl.trim() && (
+                  <p className="text-[11.5px] text-muted mt-1 mb-0">
+                    {{
+                      google: embedSrc ? '✓ Google 地图链接，可在页面内预览' : '✓ Google 地图链接（短链接无法预览，会直接在 Google 地图打开）',
+                      amap: '✓ 高德地图链接，会直接在高德打开（高德无法在页面内预览）',
+                      place: '✓ 地点名称：页面内用 Google 地图预览，也可跳转高德搜索',
+                      other: '无法识别的链接，会在新标签页打开',
+                    }[mapKind]}
+                  </p>
+                )}
+              </div>
             ) : null}
           </div>}
 
@@ -551,8 +684,10 @@ function DayCard({ d, i, total, collapsed, isToday, editUnlocked, mutate, mutate
             <ol className="itinerary-timeline list-none m-0 p-0">
               {d.items.map((a, j) => (
                 <li key={j}>
-                  {a.move.trim() || a.place.trim()
-                    ? <TransitConnector text={a.move.trim()} first={j === 0} to={a.place} from={j > 0 ? d.items[j - 1].place : ''} />
+                  {a.move.trim() || searchablePlace(a.place)
+                    ? <TransitConnector text={a.move.trim()} first={j === 0} to={searchablePlace(a.place)}
+                        from={j > 0 ? searchablePlace(d.items[j - 1].place) : ''}
+                        previewFrom={j > 0 ? searchablePlace(d.items[j - 1].place) : lastNightHotel} cityHint={cityHint} />
                     : j > 0 && <div className="h-3" aria-hidden="true" />}
                   <ItineraryStop key={a.imageUrl} a={a} index={j} />
                 </li>
@@ -566,6 +701,18 @@ function DayCard({ d, i, total, collapsed, isToday, editUnlocked, mutate, mutate
               ＋ 添加行程项目
             </button>
           )}
+
+          {editUnlocked ? (
+            <div className="mt-3.5">
+              <label className="block text-muted text-[12px] font-semibold mb-1.5" htmlFor={`day-${i}-hotel`}>🏨 今晚住宿</label>
+              <input id={`day-${i}-hotel`} className="inp editable" list={`day-${i}-hotel-options`} value={d.hotel}
+                placeholder={state.hotels.length ? '从酒店候选中选择，或直接输入；最后一天回家可留空' : '酒店名称；最后一天回家可留空'}
+                onChange={(e) => mutate((s) => { s.days[i].hotel = e.target.value; })} />
+              <datalist id={`day-${i}-hotel-options`}>
+                {state.hotels.filter((h) => h.name.trim()).map((h, k) => <option key={k} value={h.name.trim()} />)}
+              </datalist>
+            </div>
+          ) : d.hotel.trim() ? <DayHotel name={d.hotel} hotels={state.hotels} /> : null}
 
           {editUnlocked ? (
             <>
@@ -619,6 +766,7 @@ function DayOverviewRow({ d, i, date, isToday, dayWeather, onOpen }: {
           ))}
         </ol>
       )}
+      {d.hotel.trim() && <div className="text-[12.5px] text-jade-dark font-semibold mt-1.5 truncate">🏨 {d.hotel.trim()}</div>}
       <span className="block text-jade text-[12.5px] font-medium mt-2">查看当天行程 →</span>
     </button>
   );
@@ -630,14 +778,17 @@ function DayOverviewRow({ d, i, date, isToday, dayWeather, onOpen }: {
  * (scroll-spy), trip.com-style.
  */
 export default function DaysSection({
-  state, editUnlocked, mutate, mutateNoSave, startDate, weather, authorName, showDiscussionInPrint = true, todayIndex = null,
+  state, editUnlocked, mutate, mutateNoSave, startDate, weather, authorName, showDiscussionInPrint = true, todayIndex = null, destination = '',
 }: {
   state: TripState; editUnlocked: boolean; mutate: Mutate; mutateNoSave: Mutate;
   startDate: string | null; weather: WeatherResult | 'loading' | null; authorName: string;
   showDiscussionInPrint?: boolean;
   /** Index of today's day while the trip is under way; null otherwise. */
   todayIndex?: number | null;
+  /** The trip's destination, e.g. "广州・珠海・佛山顺德・深圳"; its first city seeds 高德's place lookups. */
+  destination?: string;
 }) {
+  const cityHint = destination.split(/[・·/,，、\s]/)[0]?.trim() || '';
   const weatherByDate = weather && weather !== 'loading' && weather.status === 'ok'
     ? new Map(weather.days.map((w) => [w.date, w]))
     : null;
@@ -766,7 +917,7 @@ export default function DaysSection({
             collapsed={Boolean(state.collapsed[i])} isToday={i === todayIndex}
             editUnlocked={editUnlocked} mutate={mutate} mutateNoSave={mutateNoSave}
             date={date} dayWeather={date ? weatherByDate?.get(date) : undefined}
-            state={state} authorName={authorName} showDiscussionInPrint={showDiscussionInPrint}
+            state={state} authorName={authorName} showDiscussionInPrint={showDiscussionInPrint} cityHint={cityHint}
           />
         );
       })}

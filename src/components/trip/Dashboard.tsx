@@ -39,6 +39,9 @@ function TodayCard({ state, todayIndex }: { state: TripState; todayIndex: number
           {next && <div className="flex gap-2"><dt className="shrink-0 text-white/65">下一站</dt><dd className="m-0 min-w-0 truncate font-semibold">{next.t} {plainTitle(next)}</dd></div>}
         </dl>
       )}
+      {day.hotel.trim() && (
+        <div className="flex gap-2 mt-1 text-[13.5px]"><span className="shrink-0 text-white/65">今晚住</span><span className="min-w-0 truncate font-semibold">🏨 {day.hotel.trim()}</span></div>
+      )}
       <span className="block text-[13px] font-semibold mt-3 text-white/90">查看今天行程 →</span>
     </a>
   );

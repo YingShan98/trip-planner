@@ -83,6 +83,7 @@ export async function loadTrip(slug: string): Promise<TripWorkspace> {
     intensity: (day.intensity || 'light') as Day['intensity'],
     steps: String(day.walking_note || ''),
     mapUrl: String(day.map_url || ''),
+    hotel: String(day.hotel || ''),
     notes: String(day.notes || ''),
     items: activities.filter((activity) => activity.day_id === day.id).map((activity) => ({
       t: String(activity.time_label || ''),
@@ -261,7 +262,10 @@ export async function loadSharedTrip(token: string): Promise<TripWorkspace> {
   const { data, error } = await client.rpc('get_shared_trip_workspace', { p_token_hash: tokenHash });
   if (error) throw new Error(`读取分享行程：${error.message}`);
   if (!data) throw new Error('分享链接无效、已撤销或已过期');
-  return data as TripWorkspace;
+  const workspace = data as TripWorkspace;
+  // A database not yet migrated to trip_days.hotel returns days without the key.
+  workspace.state.days = workspace.state.days.map((day) => ({ ...day, hotel: typeof day.hotel === 'string' ? day.hotel : '' }));
+  return workspace;
 }
 
 export async function revokeShares(tripId: string): Promise<number> {

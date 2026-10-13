@@ -761,7 +761,7 @@ export default function TripView({
             <Checklist state={state} editUnlocked={editUnlocked} mutate={mutate} canCheck={canCheck} onToggle={toggleCheck} onRequestEdit={canToggleEdit ? toggleEdit : undefined} />
           </CollapsibleSection>
 
-          <div id="itinerary" className={`scroll-mt-32${printSections.itinerary ? '' : ' print-hide'}`}><DaysSection state={state} editUnlocked={editUnlocked} mutate={mutate} mutateNoSave={mutateNoSave} startDate={currentTrip.start_date} weather={weather} authorName={myPresenceName} showDiscussionInPrint={printSections.notes} todayIndex={todayIndex} /></div>
+          <div id="itinerary" className={`scroll-mt-32${printSections.itinerary ? '' : ' print-hide'}`}><DaysSection state={state} editUnlocked={editUnlocked} mutate={mutate} mutateNoSave={mutateNoSave} startDate={currentTrip.start_date} weather={weather} authorName={myPresenceName} showDiscussionInPrint={printSections.notes} todayIndex={todayIndex} destination={currentTrip.destination} /></div>
 
           <CollapsibleSection id="stay" icon={COLLAPSIBLE_META.stay.icon} title={COLLAPSIBLE_META.stay.title} summary={sectionSummary.stay} printVisible={printSections.stay} open={Boolean(openSections.stay)} onToggle={() => setOpenSections((p) => ({ ...p, stay: !p.stay }))}>
             <HotelsSection state={state} editUnlocked={editUnlocked} mutate={mutate} authorName={myPresenceName} printOnlyIndex={printHotelFilter === 'all' ? null : printHotelFilter} showDiscussionInPrint={printSections.notes} />
