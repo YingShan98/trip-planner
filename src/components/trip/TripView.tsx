@@ -55,8 +55,8 @@ function ViewPanel({ id, icon, title, summary, printVisible = true, children }: 
 }) {
   return (
     <section id={id} className={`py-5 sm:py-7 border-b border-line last:border-b-0${printVisible ? '' : ' print-hide'}`}>
-      <div className="flex justify-between items-baseline gap-x-3 gap-y-1 flex-wrap pb-3.5 mb-4 border-b-2 border-line">
-        <h2 className="font-serif text-[19px] font-bold text-jade-dark flex items-center gap-2"><span aria-hidden="true">{icon}</span> {title}</h2>
+      <div className="print-head flex justify-between items-baseline gap-x-3 gap-y-1 flex-wrap pb-2.5 mb-4 border-b border-line">
+        <h2 className="text-[18px] font-bold text-ink flex items-center gap-2"><span aria-hidden="true">{icon}</span> {title}</h2>
         {summary && <span className="text-muted text-[12.5px]">{summary}</span>}
       </div>
       {children}
@@ -597,7 +597,7 @@ export default function TripView({
       )}
 
       {/* ── Trip hero ── */}
-      <header className="trip-hero relative bg-gradient-to-br from-jade-dark to-jade text-white content-gutter py-5 sm:py-8">
+      <header className="trip-hero relative bg-jade-dark text-white content-gutter py-4 sm:py-6">
         <div className="absolute inset-0 overflow-hidden">
           {currentTrip.cover_image_url && (
             <img
@@ -607,64 +607,46 @@ export default function TripView({
               onError={(e) => { (e.currentTarget as HTMLImageElement).style.display = 'none'; }}
             />
           )}
-          <div className="absolute inset-0 bg-[radial-gradient(circle_at_90%_10%,rgba(255,255,255,0.07)_0%,transparent_50%)]" />
-          <div className="absolute inset-0 bg-gradient-to-t from-jade-dark/70 via-transparent to-transparent" />
+          {/* Keeps the white title readable over any cover photo. */}
+          <div className="absolute inset-0 bg-gradient-to-t from-jade-dark/90 via-jade-dark/55 to-jade-dark/30" />
         </div>
         {/* Raised above the sticky trip nav (z-40) only while the menu is open, so the menu isn't drawn under it. */}
-        <div className={`relative ${showMenu ? 'z-[45]' : 'z-10'}`}>
+        <div className={`relative ${showMenu ? 'z-[45]' : 'z-10'} flex flex-wrap items-end justify-between gap-x-6 gap-y-3`}>
+          <div className="min-w-0 flex-1 basis-[280px]">
           <button
-            className="no-print btn mb-3 sm:mb-5 bg-white/10 border-white/22 text-white/88 text-[13px] px-3.5 py-1.5 hover:bg-white/18 hover:border-white/45 hover:text-white hover:-translate-x-0.5"
+            className="no-print mb-2 sm:mb-3 text-white/75 text-[13px] font-medium hover:text-white"
             onClick={leaveTrip}
           >
             ← 我的旅行
           </button>
 
-          <p className="hidden sm:block text-white/60 text-[11px] font-bold tracking-[0.16em] uppercase mb-2">TRIP WORKSPACE</p>
-          <h1 className="font-serif text-[24px] sm:text-[32px] font-bold mb-1.5 leading-[1.25]">{currentTrip.title}</h1>
-          <p className="text-white/72 text-[14.5px] m-0">
-            {currentTrip.destination || '目的地待定'} · {dateRange(currentTrip)}
+          <h1 className="text-[22px] sm:text-[28px] font-bold mb-1 leading-tight break-words">{currentTrip.title}</h1>
+          <p className="text-white/80 text-[14px] m-0">
+            {[currentTrip.destination || '目的地待定', dateRange(currentTrip), currentTrip.variant_label, currentTrip.audience_label && `👥 ${currentTrip.audience_label}`]
+              .filter(Boolean).join(' · ')}
           </p>
 
-          <div className="flex flex-wrap gap-2 mt-3 sm:mt-4">
-            {currentTrip.variant_label && (
-              <span className="pill bg-white/13 border-white/22 text-white/90 hero-pill">🏷️ {currentTrip.variant_label}</span>
-            )}
-            {currentTrip.audience_label && (
-              <span className="pill bg-white/13 border-white/22 text-white/90 hero-pill">👥 {currentTrip.audience_label}</span>
-            )}
-            {tripCountdownLabel(currentTrip.start_date, currentTrip.end_date) && (
-              <span className="pill bg-white/13 border-white/22 text-white/90 hero-pill">
-                🗓️ {tripCountdownLabel(currentTrip.start_date, currentTrip.end_date)}
-              </span>
-            )}
-            <span className="pill hidden sm:inline-flex bg-white/13 border-white/22 text-white/90 hero-pill">
-              💰 {currentTrip.home_currency || 'MYR'}
-              {state.isLocal
-                ? ' · 本地旅行'
-                : state.foreignCurrency
-                ? ` · ${state.foreignCurrency}${parseRate(state.exchangeRate) ? ` @ ${parseRate(state.exchangeRate)}` : ' (未设汇率)'}`
-                : ''}
-            </span>
-            <span className="no-print pill hidden sm:inline-flex bg-white/13 border-white/22 text-white/90 hero-pill">
-              {editUnlocked ? '✏️ 可编辑' : shareToken ? '🔐 安全分享' : readOnly ? '🔗 只读查看' : '👀 只读查看'}
-            </span>
-            {!readOnly && !shareToken && (role === 'owner' || role === 'editor') && (
-              <span className="no-print pill hidden sm:inline-flex bg-white/13 border-white/22 text-white/90 hero-pill text-[11.5px]">
-                {editUnlocked ? '编辑模式' : syncStatus}
-              </span>
-            )}
-            {viewers.length > 1 && (
-              <span
-                className="no-print pill bg-white/13 border-white/22 text-white/90 hero-pill"
-                title={viewers.map((v) => `${v.name}${v.editing ? '（编辑中）' : ''}`).join('、')}
-              >
-                👀 {viewers.length} 人在线{viewers.some((v) => v.editing) ? ' · 有人正在编辑' : ''}
-              </span>
-            )}
+          {(tripCountdownLabel(currentTrip.start_date, currentTrip.end_date) || viewers.length > 1) && (
+            <div className="flex flex-wrap gap-2 mt-2.5">
+              {tripCountdownLabel(currentTrip.start_date, currentTrip.end_date) && (
+                <span className="pill bg-white/15 border-white/20 text-white hero-pill">
+                  🗓️ {tripCountdownLabel(currentTrip.start_date, currentTrip.end_date)}
+                </span>
+              )}
+              {viewers.length > 1 && (
+                <span
+                  className="no-print pill bg-white/15 border-white/20 text-white hero-pill"
+                  title={viewers.map((v) => `${v.name}${v.editing ? '（编辑中）' : ''}`).join('、')}
+                >
+                  👀 {viewers.length} 人在线{viewers.some((v) => v.editing) ? ' · 有人在编辑' : ''}
+                </span>
+              )}
+            </div>
+          )}
           </div>
 
           {/* Toolbar: the everyday actions up front, the rest folded into ⋯ */}
-          <div className="no-print flex flex-wrap items-center gap-2 mt-4 sm:mt-5 pt-4 sm:pt-5 border-t border-white/14">
+          <div className="no-print flex flex-wrap items-center gap-2">
             {canToggleEdit && (
               // Phones already have the floating edit button in the corner.
               <button
@@ -694,7 +676,13 @@ export default function TripView({
                 ⋯ 更多
               </button>
               {showMenu && (
-                <div role="menu" className="absolute left-0 top-full mt-2 min-w-[210px] py-1.5 bg-surface text-ink rounded border border-line shadow-lg animate-fade-in">
+                <div role="menu" className="absolute left-0 sm:left-auto sm:right-0 top-full mt-2 min-w-[210px] py-1.5 bg-surface text-ink rounded border border-line shadow-lg animate-fade-in">
+                  {!readOnly && !shareToken && (role === 'owner' || role === 'editor') && (
+                    <p className="m-0 px-4 pt-1 pb-2 mb-1 border-b border-line text-[12px] text-muted">
+                      {editUnlocked ? '编辑模式' : syncStatus}
+                      {!state.isLocal && state.foreignCurrency && ` · ${currentTrip.home_currency || 'MYR'}/${state.foreignCurrency}${parseRate(state.exchangeRate) ? ` @ ${parseRate(state.exchangeRate)}` : ''}`}
+                    </p>
+                  )}
                   {([
                     [!readOnly && !shareToken, '⚙️ 旅行设置', () => setShowSettings(true)],
                     [!shareToken && role === 'owner', '🧾 编辑记录', openEditHistory],
@@ -749,7 +737,12 @@ export default function TripView({
           {state.days.length
             ? state.days.map((day, i) => {
                 const d = dayDate(currentTrip.start_date, i);
-                return <a key={i} href={`#day-${i + 1}`}>D{i + 1}{d ? ` · ${formatDateWithWeekday(d)}` : ''} · {day.title}</a>;
+                return (
+                  <a key={i} href={`#day-${i + 1}`}>
+                    <span className="block text-[11.5px] font-semibold">D{i + 1}{d ? ` · ${formatDateWithWeekday(d)}` : ''}{i === todayIndex ? ' · 今天' : ''}</span>
+                    <span className="block text-ink-2 leading-snug line-clamp-2">{day.title || `Day ${i + 1}`}</span>
+                  </a>
+                );
               })
             : <p className="text-muted text-[12.5px] px-2.5">还没有安排 Day</p>}
         </aside>

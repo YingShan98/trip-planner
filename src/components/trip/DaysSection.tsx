@@ -3,7 +3,7 @@ import { defaultActivity, defaultDay } from '../../state';
 import type { Activity, Day, Hotel, Intensity, Mutate, TripState } from '../../types';
 import { confirmDialog } from '../../lib/confirm';
 import { amapSearchUrl, googleDirectionsUrl, googleMapsSearchUrl, googleRouteEmbedSrc, googleRouteUrl, mapLinkKind, mapLinkLabel, MAX_ROUTE_STOPS, searchablePlace, toMapEmbedSrc } from '../../lib/mapEmbed';
-import { getRoutePref, parseRouteOptions, setRoutePref, subscribeRoutePref, transitMode, type RouteOption } from '../../lib/routeOptions';
+import { getRoutePref, isNoteOnly, legSummary, parseRouteOptions, setRoutePref, subscribeRoutePref, transitMode, type RouteOption } from '../../lib/routeOptions';
 import { dayDate, formatDateWithWeekday } from '../../lib/format';
 import { weatherEmoji, type WeatherResult } from '../../lib/weather';
 import MarkdownText from '../MarkdownText';
@@ -13,10 +13,8 @@ import AutoGrowTextarea from '../AutoGrowTextarea';
 import AmapRoute, { AMAP_MAX_STOPS, type AmapMode } from './AmapRoute';
 import { hasAmap } from '../../lib/amap';
 const intensityLabel = (i: Intensity) => i === 'light' ? '轻松' : i === 'medium' ? '中等' : '较累';
-const intensityClass = (i: Intensity) =>
-  i === 'light'  ? 'bg-[#e5f4ec] text-[#2a7d52] border-[#b8ddc7]' :
-  i === 'medium' ? 'bg-[#fdf3dc] text-[#9a6e08] border-[#ecd98a]' :
-                   'bg-[#fdf0ee] text-[#b53a2a] border-[#f0bdb4]';
+const intensityText = (i: Intensity) =>
+  i === 'light' ? 'text-[#2a7d52]' : i === 'medium' ? 'text-[#9a6e08]' : 'text-[#b53a2a]';
 
 function LinkRows({ di, ai, links, editUnlocked, mutate }: {
   di: number; ai: number; links: { label: string; url: string }[];
@@ -229,10 +227,21 @@ function amapLegMode(modeLabel: string): AmapMode {
   return 'driving';
 }
 
+/** A stop's time for the timeline's left column: "08:30 全团" → 08:30 over 全团, "09:00–11:30" → 09:00 over
+ *  –11:30, "全天 B队" → 全天 over B队. Free text with no space ("抵达后") is shown whole. */
+function splitStopTime(t: string): { main: string; sub: string } {
+  const value = t.trim();
+  const clock = /^(\d{1,2}:\d{2})(?:\s*[–—~-]\s*(\d{1,2}:\d{2}))?\s*(.*)$/.exec(value);
+  if (clock) return { main: clock[1], sub: [clock[2] ? `–${clock[2]}` : '', clock[3]].filter(Boolean).join(' ') };
+  const [main = '', ...rest] = value.split(/\s+/);
+  return { main, sub: rest.join(' ') };
+}
+
 /**
- * Leg leading to a stop: its `move` text, plus a Google Maps directions link when the stop has a
- * `place` (from the previous stop's place, or from the viewer's location for the day's first stop).
- * When the text lists several routes ("🚐 包车：…" / "🚇 公共交通：…") they become tabs.
+ * Leg leading to a stop, drawn on the timeline's dotted line: a one-line chip saying how and how long
+ * ("🚇 地铁 · 约35分钟"); tapping it opens the full text, the route tabs when the text lists several
+ * routes ("🚐 包车：…" / "🚇 公共交通：…"), the Google Maps directions link and the map preview.
+ * Text that's only remarks ("⚠️ 务必确认航站楼…") shows as a callout instead of a chip.
  */
 function TransitConnector({ text, first, to, from, previewFrom, cityHint }: {
   text: string; first: boolean; to: string; from: string; cityHint: string;
@@ -242,6 +251,8 @@ function TransitConnector({ text, first, to, from, previewFrom, cityHint }: {
   const [open, setOpen] = useState(false);
   const [showPreview, setShowPreview] = useState(false);
   const { notes, options } = useMemo(() => parseRouteOptions(text), [text]);
+  const summary = useMemo(() => legSummary(text), [text]);
+  const noteOnly = useMemo(() => isNoteOnly(text), [text]);
   const multi = options.length >= 2;
   const [chosen, chooseRoute] = useRouteChoice(options);
   const route = multi ? options[chosen] : null;
@@ -276,74 +287,121 @@ function TransitConnector({ text, first, to, from, previewFrom, cityHint }: {
     const delta = tabsRef.current.getBoundingClientRect().top - before;
     if (Math.abs(delta) >= 1) window.scrollTo({ top: window.scrollY + delta, behavior: 'instant' });
   }, [chosen]);
+
   const mode = route ? route.mode : transitMode(text);
-  const long = text.length > 36 || text.includes('\n');
   const directions = to.trim() ? googleDirectionsUrl(to, from, mode.travelMode) : null;
+  const chip = route
+    ? { icon: route.icon ?? route.mode.icon, label: route.label || route.mode.label, duration: route.duration }
+    : summary;
+  const railIcon = chip?.icon ?? (noteOnly ? '⚠️' : '·');
+  const long = text.length > 40 || text.includes('\n');
+  // Short text with no chip ("限≤7座、高2.2米") reads in full on the header line, so there's nothing to open.
+  const canOpen = multi || (Boolean(text) && (long || Boolean(chip))) || Boolean(directions) || Boolean(previewSrc);
+  const plain = text.replace(/\*\*/g, '');
+  const inlineText = !chip && !noteOnly && plain;
+  // The one-line preview under the chip, unless the chip already says all of it ("约40–60分钟").
+  const preview = !multi && !inlineText && plain.replace(/\s+/g, '') !== chip?.duration ? plain : '';
+
+  const header = (
+    <>
+      {first && <span className="shrink-0 rounded-full bg-ink-2 text-white text-[11px] font-bold px-2 py-0.5">出发</span>}
+      {chip && (
+        <span className="leg-chip">
+          {!(chip.label === '前往' && chip.duration) && <span className="min-w-0 truncate font-semibold text-ink">{chip.label}</span>}
+          {chip.duration && <span className="shrink-0 whitespace-nowrap text-ink-2">{chip.label === '前往' ? '' : '· '}{chip.duration}</span>}
+        </span>
+      )}
+      {!chip && noteOnly && <span className="shrink-0 text-[12px] font-semibold text-gold">交通提示</span>}
+      {!chip && !text && <span className="shrink-0 text-[12.5px] font-medium text-jade">🧭 怎么去</span>}
+      {multi && <span className="shrink-0 text-[11.5px] text-muted">+{options.length - 1}<span className="hidden sm:inline"> 种方式</span></span>}
+      {inlineText && (
+        <span className={`min-w-0 text-[12.5px] text-muted ${canOpen && !open ? 'truncate print:whitespace-normal' : ''}`}>{inlineText}</span>
+      )}
+      {canOpen && <span className="no-print shrink-0 ml-auto text-muted text-[11px]" aria-hidden="true">{open ? '▴' : '▾'}</span>}
+    </>
+  );
+
   return (
-    <div className="itinerary-leg flex items-start gap-2.5 py-2 pl-[26px] text-[12.5px] text-muted">
-      <span className="shrink-0 -ml-[15px] w-[30px] h-[30px] rounded-full bg-surface border border-line flex items-center justify-center text-[14px] relative z-[1]"
-        role="img" aria-label={mode.label}>{route?.icon ?? mode.icon}</span>
-      <div className="min-w-0 flex-1 pt-[5px]">
-        {multi ? (
-          <>
-            <div className="no-print">
-              {(first || notes) && (
-                <div className="mb-1.5">
-                  {first && <span className="font-semibold text-ink-2">出发{notes ? ' · ' : ''}</span>}
-                  {notes && <MarkdownText text={notes} className="inline !text-[12.5px] !text-muted !leading-relaxed [&>p]:inline" />}
+    <div className="itin-row itin-leg py-1">
+      <div aria-hidden="true" />
+      <div className="relative z-[1] flex justify-center pt-[3px]">
+        <span className="w-[26px] h-[26px] rounded-full bg-surface border border-line flex items-center justify-center text-[13px]"
+          role="img" aria-label={chip?.label ?? (noteOnly ? '提示' : '前往')}>{railIcon}</span>
+      </div>
+      <div className="min-w-0 py-[3px]">
+        {canOpen ? (
+          <button className="w-full min-h-[26px] flex items-center gap-2 text-left rounded-sm hover:bg-surface-3/70 -mx-1 px-1"
+            aria-expanded={open} onClick={() => setOpen((v) => !v)}>
+            {header}
+          </button>
+        ) : (
+          <div className="min-h-[26px] flex items-center gap-2 flex-wrap">{header}</div>
+        )}
+
+        {/* Folded: one line of what the text says, or the remark as a callout. Paper always gets it all. */}
+        {!open && preview && (
+          noteOnly ? (
+            <div className="mt-1 rounded-sm bg-gold-tint border border-gold-line px-2.5 py-1.5 text-[12.5px] text-ink-2">
+              <p className="m-0 line-clamp-2 print-unclamp">{preview}</p>
+            </div>
+          ) : (
+            <div className="mt-0.5 text-[12.5px] text-muted line-clamp-1 print-unclamp">{preview}</div>
+          )
+        )}
+        {!open && multi && (
+          <div className="hidden print-show mt-1">
+            <MarkdownText text={text} className="!text-[12.5px] !text-muted !leading-relaxed" />
+          </div>
+        )}
+
+        {open && (
+          <div className="mt-1.5 mb-1">
+            {multi ? (
+              <>
+                {notes && <MarkdownText text={notes} className="!text-[12.5px] !text-muted !leading-relaxed mb-1.5" />}
+                <div ref={tabsRef} role="tablist" aria-label="交通方式" className="no-print flex gap-1.5 overflow-x-auto day-tabs -mx-0.5 px-0.5">
+                  {options.map((o, i) => (
+                    <button key={i} role="tab" aria-selected={i === chosen} onClick={() => choose(i)}
+                      className={`shrink-0 flex items-center gap-1 rounded-full border px-2.5 py-1 min-h-[34px] text-[12.5px] font-semibold transition-colors ${
+                        i === chosen ? 'bg-jade-dark border-jade-dark text-white' : 'bg-surface border-line text-ink-2 hover:border-jade hover:text-jade'
+                      }`}>
+                      <span aria-hidden="true">{o.icon ?? o.mode.icon}</span>
+                      <span>{o.tabLabel}</span>
+                      {o.duration && <span className={`font-medium ${i === chosen ? 'text-white/75' : 'text-muted'}`}>{o.duration.replace(/^约/, '')}</span>}
+                    </button>
+                  ))}
                 </div>
-              )}
-              <div ref={tabsRef} role="tablist" aria-label="交通方式" className="flex gap-1.5 overflow-x-auto day-tabs -mx-0.5 px-0.5">
-                {options.map((o, i) => (
-                  <button key={i} role="tab" aria-selected={i === chosen} onClick={() => choose(i)}
-                    className={`shrink-0 flex items-center gap-1 rounded-full border-[1.5px] px-2.5 py-1 min-h-[34px] text-[12.5px] font-semibold transition-colors ${
-                      i === chosen ? 'bg-jade-dark border-jade-dark text-white' : 'bg-surface border-line text-ink-2 hover:border-jade hover:text-jade'
-                    }`}>
-                    <span aria-hidden="true">{o.icon ?? o.mode.icon}</span>
-                    <span>{o.tabLabel}</span>
-                    {o.duration && <span className={`font-medium ${i === chosen ? 'text-white/75' : 'text-muted'}`}>{o.duration.replace(/^约/, '')}</span>}
-                  </button>
-                ))}
+                {route && <div className="no-print"><RouteDetails option={route} /></div>}
+                <div className="hidden print-show"><MarkdownText text={text} className="!text-[12.5px] !text-muted !leading-relaxed" /></div>
+              </>
+            ) : text && !inlineText ? (
+              <div className={noteOnly ? 'rounded-sm bg-gold-tint border border-gold-line px-2.5 py-2' : 'rounded-sm bg-surface-2 border border-line px-3 py-2'}>
+                <MarkdownText text={text} className="!text-[12.5px] !leading-relaxed" />
               </div>
-              {route && <RouteDetails option={route} />}
-            </div>
-            {/* On paper every route is listed, as written. */}
-            <div className="hidden print-show">
-              <MarkdownText text={text} className="!text-[12.5px] !text-muted !leading-relaxed" />
-            </div>
-          </>
-        ) : text && (
-          <div className={open || !long ? '' : 'line-clamp-1 print-unclamp'}>
-            {first && <span className="font-semibold text-ink-2">出发 · </span>}
-            <MarkdownText text={text} className="inline !text-[12.5px] !text-muted !leading-relaxed [&>p]:inline" />
-          </div>
-        )}
-        {((long && !multi) || directions || previewSrc) && (
-          <div className="no-print flex flex-wrap items-center gap-x-3 gap-y-1.5 mt-1.5 text-[12px] font-medium">
-            {long && !multi && (
-              <button className="text-jade hover:underline" aria-expanded={open} onClick={() => setOpen((v) => !v)}>
-                {open ? '收起' : '展开交通详情'}
-              </button>
+            ) : null}
+            {(directions || previewSrc) && (
+              <div className="no-print flex flex-wrap items-center gap-1.5 mt-2 text-[12px] font-medium">
+                {directions && (
+                  <a href={directions} target="_blank" rel="noopener noreferrer" className="btn-mini !text-jade no-underline hover:no-underline"
+                    title={from.trim() ? `${from.trim()} → ${to.trim()}` : `从当前位置前往 ${to.trim()}`}>
+                    🧭 {multi ? `${mode.label}导航` : '导航'}{from.trim() ? '' : '（从当前位置）'} ↗
+                  </a>
+                )}
+                {previewSrc && (
+                  <button className={`btn-mini ${showPreview ? 'bg-jade-dark !text-white border-jade-dark' : '!text-jade'}`}
+                    aria-expanded={showPreview} onClick={() => setShowPreview((v) => !v)}>
+                    🗺️ {showPreview ? '收起地图' : '看路线地图'}
+                  </button>
+                )}
+              </div>
             )}
-            {directions && (
-              <a href={directions} target="_blank" rel="noopener noreferrer" className="btn-mini !text-jade no-underline hover:no-underline"
-                title={from.trim() ? `${from.trim()} → ${to.trim()}` : `从当前位置前往 ${to.trim()}`}>
-                🧭 {multi ? `${mode.label}路线` : '路线'}{from.trim() ? '' : '（从当前位置）'} ↗
-              </a>
+            {showPreview && previewSrc && (
+              <div className="no-print mt-2 rounded-sm overflow-hidden border border-line bg-surface-2">
+                {/* 高德 when configured (works on a Chinese SIM, and plans 地铁/公交); Google otherwise. */}
+                <AmapRoute stops={[previewFrom, to]} mode={amapLegMode(mode.label)} cityHint={cityHint} height={220}
+                  fallback={googleLeg} />
+              </div>
             )}
-            {previewSrc && (
-              <button className={`btn-mini ${showPreview ? 'bg-jade-dark !text-white border-jade-dark' : '!text-jade'}`}
-                aria-expanded={showPreview} onClick={() => setShowPreview((v) => !v)}>
-                🗺️ {showPreview ? '收起预览' : '预览路线'}
-              </button>
-            )}
-          </div>
-        )}
-        {showPreview && previewSrc && (
-          <div className="no-print mt-2 rounded-sm overflow-hidden border border-line bg-surface-2">
-            {/* 高德 when configured (works on a Chinese SIM, and plans 地铁/公交); Google otherwise. */}
-            <AmapRoute stops={[previewFrom, to]} mode={amapLegMode(mode.label)} cityHint={cityHint} height={220}
-              fallback={googleLeg} />
           </div>
         )}
       </div>
@@ -351,13 +409,13 @@ function TransitConnector({ text, first, to, from, previewFrom, cityHint }: {
   );
 }
 
-/** Read-only stop card: thumbnail + number, title, and the at-a-glance facts; the rest folds away. */
-function ItineraryStop({ a, index }: { a: Activity; index: number }) {
+/** One stop on the timeline: its time on the left, a numbered dot on the line, and a card with the title
+ *  and the at-a-glance facts; the rest folds away. */
+function ItineraryStop({ a, index, last }: { a: Activity; index: number; last: boolean }) {
   const [open, setOpen] = useState(false);
   const [imgFailed, setImgFailed] = useState(false);
   const links = a.link.filter((l) => l.url.trim());
-  const extras: [string, string, boolean?][] = [
-    ['闭馆日', a.closedDays, true],
+  const extras: [string, string][] = [
     ['建议星期', a.recommendedWeekdays],
     ['无障碍提示', a.accessibility],
     ['备选方案', a.alternative],
@@ -366,92 +424,94 @@ function ItineraryStop({ a, index }: { a: Activity; index: number }) {
   const shownExtras = extras.filter(([, v]) => v.trim());
   const hasMore = shownExtras.length > 0 || links.length > 0;
   const showImage = Boolean(a.imageUrl) && !imgFailed;
+  const time = splitStopTime(a.t);
 
   return (
-    <div className="relative z-[1] bg-surface border border-line rounded p-3 shadow-xs transition-all duration-150 hover:border-line-strong hover:shadow-sm print-keep">
-      <div className="flex gap-3">
-        <div className="relative shrink-0 w-[84px] h-[84px] sm:w-[104px] sm:h-[104px] rounded-sm overflow-hidden border border-line bg-jade-light">
-          {showImage ? (
-            <img key={a.imageUrl} src={a.imageUrl} alt="" loading="lazy"
-              className="activity-image w-full h-full object-cover" onError={() => setImgFailed(true)} />
-          ) : (
-            <div className="w-full h-full flex flex-col items-center justify-center text-jade">
-              <span className="font-serif font-bold text-[28px] leading-none">{index + 1}</span>
-              {a.t && <span className="text-[11px] mt-1 font-semibold">{a.t}</span>}
-            </div>
-          )}
-          {showImage && (
-            <span className="absolute top-1 left-1 min-w-[22px] h-[22px] px-1 rounded-full bg-jade-dark text-white text-[11.5px] font-bold flex items-center justify-center">
-              {index + 1}
-            </span>
-          )}
-        </div>
-        <div className="min-w-0 flex-1">
-          <div className="flex items-start gap-2">
-            <div className="min-w-0 flex-1 break-words">
+    <div className={`itin-row itin-stop py-1.5${last ? ' itin-end' : ''}`}>
+      <div className="pt-[5px] text-right leading-tight break-words">
+        {time.main
+          ? <span className="block text-[13px] font-bold text-ink tabular-nums">{time.main}</span>
+          : <span className="block text-[11.5px] text-muted">待定</span>}
+        {time.sub && <span className="block text-[11px] text-muted mt-0.5">{time.sub}</span>}
+      </div>
+      <div className="relative z-[1] flex justify-center pt-1">
+        <span className="w-[26px] h-[26px] rounded-full bg-jade-dark text-white text-[12px] font-bold flex items-center justify-center ring-4 ring-surface">
+          {index + 1}
+        </span>
+      </div>
+      <div className="itin-card min-w-0 print-keep">
+        <div className="flex gap-3">
+          <div className="min-w-0 flex-1">
+            <div className="break-words">
               {a.x.trim()
-                ? <MarkdownText text={a.x} className="!font-bold !text-ink !text-[14.5px] !leading-snug" />
+                ? <MarkdownText text={a.x} className="!font-bold !text-ink !text-[15px] !leading-snug" />
                 : <span className="text-muted">未命名行程</span>}
             </div>
-            {a.t && showImage && <span className="pill shrink-0 !py-0.5 !text-[11.5px]">{a.t}</span>}
+            {a.place.trim() && (searchablePlace(a.place) ? (
+              <div className="mt-1 text-[12.5px] text-ink-2 break-words">
+                <span>📍 {a.place.trim()}</span>
+                <span className="no-print whitespace-nowrap">
+                  {' · '}
+                  <a href={googleMapsSearchUrl(a.place)} target="_blank" rel="noopener noreferrer" className="font-medium">Google</a>
+                  {' · '}
+                  <a href={amapSearchUrl(a.place)} target="_blank" rel="noopener noreferrer" className="font-medium">高德</a>
+                </span>
+              </div>
+            ) : (
+              // A pasted map link: one link that opens it, in 高德 or Google Maps as the link says.
+              <div className="no-print mt-1 text-[12.5px]">
+                <a href={a.place.trim()} target="_blank" rel="noopener noreferrer" className="font-medium">📍 {mapLinkLabel(mapLinkKind(a.place))} ↗</a>
+              </div>
+            ))}
           </div>
-          {a.place.trim() && (searchablePlace(a.place) ? (
-            <div className="mt-1 flex flex-wrap items-baseline gap-x-2 text-[12px]">
-              <span className="text-ink-2 min-w-0">📍 {a.place.trim()}</span>
-              <span className="no-print flex flex-wrap gap-1.5 mt-1">
-                <a href={googleMapsSearchUrl(a.place)} target="_blank" rel="noopener noreferrer" className="btn-mini !text-jade no-underline hover:no-underline">Google 地图 ↗</a>
-                <a href={amapSearchUrl(a.place)} target="_blank" rel="noopener noreferrer" className="btn-mini !text-jade no-underline hover:no-underline">高德 ↗</a>
-              </span>
-            </div>
-          ) : (
-            // A pasted map link: one button that opens it, in 高德 or Google Maps as the link says.
-            <div className="no-print mt-1.5">
-              <a href={a.place.trim()} target="_blank" rel="noopener noreferrer" className="btn-mini !text-jade no-underline hover:no-underline">
-                📍 {mapLinkLabel(mapLinkKind(a.place))} ↗
-              </a>
-            </div>
-          ))}
-          <dl className="mt-1.5 space-y-0.5 text-[12.5px] text-ink-2">
+          {showImage && (
+            <img key={a.imageUrl} src={a.imageUrl} alt="" loading="lazy"
+              className="activity-image shrink-0 w-[64px] h-[64px] sm:w-[84px] sm:h-[84px] rounded-sm object-cover border border-line bg-surface-2"
+              onError={() => setImgFailed(true)} />
+          )}
+        </div>
+        {(a.duration || a.visitHours || a.closedDays || a.fee) && (
+          <dl className="stop-facts mt-2 text-[12.5px]">
             {([
-              ['建议游玩', a.duration, ''],
+              ['停留', a.duration, ''],
               ['开放', a.visitHours, ''],
               ['闭馆', a.closedDays, '!text-danger'],
               ['费用', a.fee, '!font-semibold !text-jade-dark'],
             ] as const).filter(([, v]) => v.trim()).map(([label, v, tone]) => (
-              <div key={label} className="flex gap-1.5">
-                <dt className={`shrink-0 ${label === '闭馆' ? 'text-danger' : 'text-muted'}`}>{label}</dt>
+              <div key={label} className="contents">
+                <dt className={label === '闭馆' ? 'text-danger' : 'text-muted'}>{label}</dt>
                 <dd className="min-w-0 m-0"><MarkdownText text={v} className={`!text-[12.5px] !leading-normal ${tone}`} /></dd>
               </div>
             ))}
           </dl>
-        </div>
+        )}
+        {hasMore && (
+          <>
+            <button className="no-print mt-2 text-jade text-[12.5px] font-medium hover:underline" aria-expanded={open}
+              onClick={() => setOpen((v) => !v)}>
+              {open ? '收起 ▴' : `更多${shownExtras.length ? '提示' : ''}${links.length ? `${shownExtras.length ? ' · ' : ''}${links.length} 个链接` : ''} ▾`}
+            </button>
+            <div className={`${open ? '' : 'hidden'} print-show mt-2 pt-2 border-t border-dashed border-line`}>
+              {shownExtras.length > 0 && (
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                  {shownExtras.map(([label, v]) => (
+                    <div key={label} className="rich-field"><span className="rich-label">{label}</span><MarkdownText text={v} /></div>
+                  ))}
+                </div>
+              )}
+              {links.length > 0 && (
+                <div className="flex flex-wrap gap-x-4 gap-y-1.5 mt-2">
+                  {links.map((l, li) => (
+                    <a key={li} href={l.url} target="_blank" rel="noopener noreferrer" className="text-jade text-[12.5px] hover:underline">
+                      ↗ {l.label || l.url}
+                    </a>
+                  ))}
+                </div>
+              )}
+            </div>
+          </>
+        )}
       </div>
-      {hasMore && (
-        <>
-          <button className="no-print mt-2 text-jade text-[12.5px] font-medium hover:underline" aria-expanded={open}
-            onClick={() => setOpen((v) => !v)}>
-            {open ? '收起详情 ▴' : `更多详情${links.length ? ` · ${links.length} 个链接` : ''} ▾`}
-          </button>
-          <div className={`${open ? '' : 'hidden'} print-show mt-2.5 pt-2.5 border-t border-dashed border-line`}>
-            {shownExtras.filter(([label]) => label !== '闭馆日').length > 0 && (
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
-                {shownExtras.filter(([label]) => label !== '闭馆日').map(([label, v]) => (
-                  <div key={label} className="rich-field"><span className="rich-label">{label}</span><MarkdownText text={v} /></div>
-                ))}
-              </div>
-            )}
-            {links.length > 0 && (
-              <div className="flex flex-wrap gap-x-4 gap-y-1.5 mt-2.5">
-                {links.map((l, li) => (
-                  <a key={li} href={l.url} target="_blank" rel="noopener noreferrer" className="text-jade text-[12.5px] hover:underline">
-                    ↗ {l.label || l.url}
-                  </a>
-                ))}
-              </div>
-            )}
-          </div>
-        </>
-      )}
     </div>
   );
 }
@@ -464,23 +524,29 @@ function hotelLocation(name: string, hotels: Hotel[]): string {
   return searchablePlace(addr || name);
 }
 
-/** End-of-day card: where the group sleeps tonight, with the address and map/directions links when it
- *  matches one of the trip's hotel candidates by name. */
+/** End of the day's timeline: where the group sleeps tonight, with the address and map/directions links
+ *  when it matches one of the trip's hotel candidates by name. */
 function DayHotel({ name, hotels }: { name: string; hotels: Hotel[] }) {
   const hotel = hotels.find((h) => h.name.trim() === name.trim());
   const addr = hotel?.addr.trim() || '';
   const where = hotelLocation(name, hotels) || name.trim();
   return (
-    <div className="mt-3.5 flex gap-3 items-start rounded border-[1.5px] border-jade-tint bg-jade-light px-3.5 py-3 print-keep">
-      <span className="text-[22px] leading-none mt-0.5" aria-hidden="true">🏨</span>
-      <div className="min-w-0 flex-1">
-        <span className="rich-label !text-jade">今晚住宿</span>
-        <strong className="block font-serif text-[15.5px] text-jade-dark leading-snug break-words">{name.trim()}</strong>
+    <div className="itin-row itin-stop itin-end py-1.5">
+      <div className="pt-[5px] text-right leading-tight">
+        <span className="block text-[12px] font-bold text-jade-dark">今晚</span>
+      </div>
+      <div className="relative z-[1] flex justify-center pt-1">
+        <span className="w-[26px] h-[26px] rounded-full bg-jade-light border border-jade-tint text-[13px] flex items-center justify-center ring-4 ring-surface" aria-hidden="true">🏨</span>
+      </div>
+      <div className="min-w-0 rounded-lg border border-jade-tint bg-jade-light px-3 py-2.5 print-keep">
+        <strong className="block text-[14.5px] text-jade-dark leading-snug break-words">{name.trim()}</strong>
         {addr && <div className="text-[12.5px] text-ink-2 mt-0.5 break-words">📍 {addr}</div>}
-        <div className="no-print flex flex-wrap gap-1.5 mt-2">
-          <a href={googleDirectionsUrl(where)} target="_blank" rel="noopener noreferrer" className="btn-mini !text-jade no-underline hover:no-underline">🧭 回酒店 ↗</a>
-          <a href={googleMapsSearchUrl(where)} target="_blank" rel="noopener noreferrer" className="btn-mini !text-jade no-underline hover:no-underline">Google 地图 ↗</a>
-          <a href={amapSearchUrl(where)} target="_blank" rel="noopener noreferrer" className="btn-mini !text-jade no-underline hover:no-underline">高德 ↗</a>
+        <div className="no-print text-[12.5px] mt-1">
+          <a href={googleDirectionsUrl(where)} target="_blank" rel="noopener noreferrer" className="font-medium">🧭 导航回酒店</a>
+          {' · '}
+          <a href={googleMapsSearchUrl(where)} target="_blank" rel="noopener noreferrer" className="font-medium">Google</a>
+          {' · '}
+          <a href={amapSearchUrl(where)} target="_blank" rel="noopener noreferrer" className="font-medium">高德</a>
         </div>
       </div>
     </div>
@@ -531,28 +597,36 @@ function DayCard({ d, i, total, collapsed, isToday, editUnlocked, mutate, mutate
   };
 
   return (
-    <article id={`day-${i + 1}`} data-day-index={i} className={`day-card bg-surface border rounded-lg overflow-hidden mb-3.5 shadow-xs ${isToday ? 'border-jade ring-2 ring-jade/25' : 'border-line'}`}>
-      {/* Day header */}
-      <div className="flex items-center gap-2.5 px-4 py-3 bg-surface-3 border-b border-line flex-wrap print-head">
-        <span className="bg-jade-dark text-white rounded-[5px] px-2.5 py-1 font-bold text-[11.5px] tracking-[0.06em] shrink-0">
-          D{i + 1}
-        </span>
-        {isToday && <span className="no-print bg-gold text-white rounded-[5px] px-2 py-1 font-bold text-[11.5px] shrink-0">今天</span>}
-        {date && (
-          <span className="text-muted text-[12px] font-semibold shrink-0" title={dayWeather ? `${dayWeather.tMax}° / ${dayWeather.tMin}° · 降雨概率 ${dayWeather.precipProb}%` : undefined}>
-            {formatDateWithWeekday(date)}
-            {dayWeather && <> <span aria-hidden="true">{weatherEmoji(dayWeather.code)}</span> {dayWeather.tMax}°/{dayWeather.tMin}°</>}
-          </span>
-        )}
-        {editUnlocked ? (
-          <input
-            className="inp-bare editable flex-1 min-w-[140px] font-bold text-[15px] font-serif py-1"
-            value={d.title}
-            onChange={(e) => mutate((s) => { s.days[i].title = e.target.value; })}
-          />
-        ) : <h3 className="flex-1 min-w-[140px] font-bold text-[15px] font-serif py-1">{d.title}</h3>}
-        <span className={`pill border ${intensityClass(d.intensity)}`}>{intensityLabel(d.intensity)}</span>
-        <div className="flex gap-1.5 ml-auto">
+    <article id={`day-${i + 1}`} data-day-index={i} className={`day-card bg-surface border rounded-xl overflow-hidden mb-4 ${isToday ? 'border-jade ring-2 ring-jade/20' : 'border-line'}`}>
+      {/* Day header: the day number, its title, and one line of date · weather · pace · stop count */}
+      <div className="flex items-start gap-3 px-3.5 sm:px-4 py-3 border-b border-line flex-wrap print-head">
+        <div className={`shrink-0 w-11 h-11 rounded-lg flex flex-col items-center justify-center leading-none ${isToday ? 'bg-gold text-white' : 'bg-jade-dark text-white'}`}>
+          <span className="text-[9.5px] font-semibold tracking-[0.08em] opacity-80">{isToday ? '今天' : 'DAY'}</span>
+          <span className="text-[18px] font-bold mt-0.5">{i + 1}</span>
+        </div>
+        <div className="flex-1 min-w-[150px]">
+          {editUnlocked ? (
+            <input
+              className="inp-bare editable w-full font-bold text-[16px] py-0.5"
+              value={d.title}
+              aria-label={`D${i + 1} 标题`}
+              onChange={(e) => mutate((s) => { s.days[i].title = e.target.value; })}
+            />
+          ) : <h3 className="font-bold text-[16px] leading-snug text-ink">{d.title || `Day ${i + 1}`}</h3>}
+          <p className="m-0 mt-0.5 flex flex-wrap items-center gap-x-2 gap-y-0.5 text-[12.5px] text-muted">
+            {date && (
+              <span title={dayWeather ? `${dayWeather.tMax}° / ${dayWeather.tMin}° · 降雨概率 ${dayWeather.precipProb}%` : undefined}>
+                {formatDateWithWeekday(date)}
+                {dayWeather && <> · <span aria-hidden="true">{weatherEmoji(dayWeather.code)}</span> {dayWeather.tMax}°/{dayWeather.tMin}°</>}
+              </span>
+            )}
+            <span className={`inline-flex items-center gap-1 font-semibold ${intensityText(d.intensity)}`}>
+              <span className="w-1.5 h-1.5 rounded-full bg-current" aria-hidden="true" />{intensityLabel(d.intensity)}
+            </span>
+            {d.items.length > 0 && <span>{d.items.length} 站</span>}
+          </p>
+        </div>
+        <div className="flex gap-1.5 ml-auto items-center">
           {d.mapUrl.trim() && !embedSrc && !routeSrc ? (
             <a href={mapOpenUrl} target="_blank" rel="noopener noreferrer"
               className="no-print btn-mini flex items-center gap-1 no-underline hover:no-underline">
@@ -560,15 +634,15 @@ function DayCard({ d, i, total, collapsed, isToday, editUnlocked, mutate, mutate
             </a>
           ) : (embedSrc || routeSrc) && (
             <button
-              className={`no-print btn-mini flex items-center gap-1 ${showMap ? 'bg-jade-dark !text-white border-jade-dark' : ''}`}
+              className={`no-print btn-mini flex items-center gap-1 ${showMap ? 'bg-jade-dark !text-white border-jade-dark' : ''}`} aria-label={showMap ? '收起地图' : '当天路线地图'}
               onClick={() => setShowMap((v) => !v)}
             >
-              🗺️ {showMap ? '收起地图' : routeSrc ? '路线地图' : '查看地图'}
+              🗺️<span className="hidden sm:inline"> {showMap ? '收起地图' : routeSrc ? '路线地图' : '查看地图'}</span>
             </button>
           )}
-          <button className="no-print btn-mini" aria-expanded={!collapsed}
+          <button className="no-print btn-mini" aria-expanded={!collapsed} aria-label={collapsed ? `展开 D${i + 1}` : `折叠 D${i + 1}`}
             onClick={() => mutateNoSave((s) => { s.collapsed[i] = !s.collapsed[i]; })}>
-            {collapsed ? '展开 ▾' : '折叠 ▴'}
+            {collapsed ? '▾' : '▴'}<span className="hidden sm:inline">{collapsed ? ' 展开' : ' 折叠'}</span>
           </button>
           {editUnlocked && (
             <>
@@ -642,7 +716,7 @@ function DayCard({ d, i, total, collapsed, isToday, editUnlocked, mutate, mutate
       )}
 
       {/* Day body — folded days stay in the DOM (hidden on screen only) so they still print */}
-      <div className={`p-4${collapsed ? ' hidden print-show' : ''}`}>
+      <div className={`px-3 sm:px-4 pt-3 pb-4${collapsed ? ' hidden print-show' : ''}`}>
           {(editUnlocked || d.steps) && <div className="flex gap-2 flex-wrap mb-3.5">
             {editUnlocked && (
               <select className="inp editable w-full sm:w-auto" value={d.intensity}
@@ -680,20 +754,22 @@ function DayCard({ d, i, total, collapsed, isToday, editUnlocked, mutate, mutate
 
           {editUnlocked ? d.items.map((a, j) => (
             <ActivityRow key={j} a={a} di={i} ai={j} total={d.items.length} editUnlocked={editUnlocked} mutate={mutate} />
-          )) : d.items.length ? (
-            <ol className="itinerary-timeline list-none m-0 p-0">
+          )) : d.items.length || d.hotel.trim() ? (
+            <ol className="itin">
               {d.items.map((a, j) => (
                 <li key={j}>
-                  {a.move.trim() || searchablePlace(a.place)
-                    ? <TransitConnector text={a.move.trim()} first={j === 0} to={searchablePlace(a.place)}
-                        from={j > 0 ? searchablePlace(d.items[j - 1].place) : ''}
-                        previewFrom={j > 0 ? searchablePlace(d.items[j - 1].place) : lastNightHotel} cityHint={cityHint} />
-                    : j > 0 && <div className="h-3" aria-hidden="true" />}
-                  <ItineraryStop key={a.imageUrl} a={a} index={j} />
+                  {(a.move.trim() || searchablePlace(a.place)) && (
+                    <TransitConnector text={a.move.trim()} first={j === 0} to={searchablePlace(a.place)}
+                      from={j > 0 ? searchablePlace(d.items[j - 1].place) : ''}
+                      previewFrom={j > 0 ? searchablePlace(d.items[j - 1].place) : lastNightHotel} cityHint={cityHint} />
+                  )}
+                  <ItineraryStop key={a.imageUrl} a={a} index={j} last={j === d.items.length - 1 && !d.hotel.trim()} />
                 </li>
               ))}
+              {d.hotel.trim() && <li><DayHotel name={d.hotel} hotels={state.hotels} /></li>}
             </ol>
-          ) : <p className="text-muted text-[13px] text-center py-4">这一天还没有安排行程</p>}
+          ) : null}
+          {!editUnlocked && !d.items.length && <p className="text-muted text-[13px] text-center py-4">这一天还没有安排行程</p>}
 
           {editUnlocked && (
             <button className="add-btn edit-only"
@@ -702,7 +778,7 @@ function DayCard({ d, i, total, collapsed, isToday, editUnlocked, mutate, mutate
             </button>
           )}
 
-          {editUnlocked ? (
+          {editUnlocked && (
             <div className="mt-3.5">
               <label className="block text-muted text-[12px] font-semibold mb-1.5" htmlFor={`day-${i}-hotel`}>🏨 今晚住宿</label>
               <input id={`day-${i}-hotel`} className="inp editable" list={`day-${i}-hotel-options`} value={d.hotel}
@@ -712,7 +788,7 @@ function DayCard({ d, i, total, collapsed, isToday, editUnlocked, mutate, mutate
                 {state.hotels.filter((h) => h.name.trim()).map((h, k) => <option key={k} value={h.name.trim()} />)}
               </datalist>
             </div>
-          ) : d.hotel.trim() ? <DayHotel name={d.hotel} hotels={state.hotels} /> : null}
+          )}
 
           {editUnlocked ? (
             <>
@@ -742,7 +818,7 @@ function DayOverviewRow({ d, i, date, isToday, dayWeather, onOpen }: {
 }) {
   return (
     <button onClick={onOpen}
-      className={`w-full text-left bg-surface border rounded p-3.5 mb-2.5 shadow-xs transition-all duration-150 hover:border-jade hover:shadow-sm ${isToday ? 'border-jade' : 'border-line'}`}>
+      className={`w-full text-left bg-surface border rounded-lg p-3 transition-colors duration-150 hover:border-jade ${isToday ? 'border-jade' : 'border-line'}`}>
       <div className="flex items-center gap-2 flex-wrap">
         <span className="bg-jade-dark text-white rounded-[5px] px-2 py-0.5 font-bold text-[11.5px] tracking-[0.06em] shrink-0">D{i + 1}</span>
         {isToday && <span className="bg-gold text-white rounded-[5px] px-2 py-0.5 font-bold text-[11.5px] shrink-0">今天</span>}
@@ -752,9 +828,11 @@ function DayOverviewRow({ d, i, date, isToday, dayWeather, onOpen }: {
             {dayWeather && <> <span aria-hidden="true">{weatherEmoji(dayWeather.code)}</span> {dayWeather.tMax}°/{dayWeather.tMin}°</>}
           </span>
         )}
-        <span className={`pill border !py-0.5 ml-auto ${intensityClass(d.intensity)}`}>{intensityLabel(d.intensity)}</span>
+        <span className={`ml-auto inline-flex items-center gap-1 text-[12px] font-semibold ${intensityText(d.intensity)}`}>
+          <span className="w-1.5 h-1.5 rounded-full bg-current" aria-hidden="true" />{intensityLabel(d.intensity)}
+        </span>
       </div>
-      <h3 className="font-serif font-bold text-[15.5px] text-ink mt-1.5">{d.title || `Day ${i + 1}`}</h3>
+      <h3 className="font-bold text-[15px] text-ink mt-1 leading-snug">{d.title || `Day ${i + 1}`}</h3>
       {d.items.length > 0 && (
         <ol className="list-none m-0 p-0 mt-1.5 space-y-0.5">
           {d.items.map((a, j) => (
@@ -767,7 +845,6 @@ function DayOverviewRow({ d, i, date, isToday, dayWeather, onOpen }: {
         </ol>
       )}
       {d.hotel.trim() && <div className="text-[12.5px] text-jade-dark font-semibold mt-1.5 truncate">🏨 {d.hotel.trim()}</div>}
-      <span className="block text-jade text-[12.5px] font-medium mt-2">查看当天行程 →</span>
     </button>
   );
 }
@@ -794,8 +871,9 @@ export default function DaysSection({
     : null;
   /** Day whose card sits under the pill bar; null while the overview (above Day 1) is in view. */
   const [active, setActive] = useState<number | null>(null);
-  // Mid-trip the overview list is just in the way of today's day, so it starts folded.
-  const [overviewOpen, setOverviewOpen] = useState(todayIndex === null);
+  // The overview repeats what the day cards show, so it starts folded; the pill bar and the
+  // desktop sidebar already jump between days.
+  const [overviewOpen, setOverviewOpen] = useState(false);
   const tabsRef = useRef<HTMLDivElement>(null);
   /** Suppresses scroll-spy while a pill-click smooth scroll passes over the days in between. */
   const spyLockUntil = useRef(0);
@@ -858,16 +936,20 @@ export default function DaysSection({
   const allCollapsed = dayCount > 0 && state.days.every((_, i) => state.collapsed[i]);
 
   const tabClass = (on: boolean) =>
-    `shrink-0 flex flex-col items-center justify-center min-w-[64px] px-3.5 py-1.5 rounded-full border-[1.5px] text-[13px] font-semibold leading-tight transition-colors ${
+    `shrink-0 flex flex-col items-center justify-center min-w-[60px] px-3 py-1.5 rounded-lg border text-[13px] font-semibold leading-tight transition-colors ${
       on ? 'bg-jade-dark border-jade-dark text-white' : 'bg-surface border-line text-ink-2 hover:border-jade hover:text-jade'
     }`;
 
   return (
     <section className="py-5 sm:py-7 border-b border-line">
-      <div className="flex justify-between items-center gap-2.5 pb-3.5 mb-4 border-b-2 border-line flex-wrap">
-        <h2 className="font-serif text-[19px] font-bold text-jade-dark">🗓️ 行程</h2>
+      <div className="print-head flex justify-between items-center gap-2.5 pb-2.5 mb-3 border-b border-line flex-wrap">
+        <h2 className="text-[18px] font-bold text-ink">行程 <span className="text-muted text-[13px] font-medium">{dayCount} 天</span></h2>
         <div className="flex items-center gap-2">
-          <span className="text-muted text-[13px] hidden sm:inline">{dayCount} 天 · 任意天数 · 可自由调整顺序</span>
+          {dayCount > 0 && (
+            <button className="btn-mini no-print" aria-expanded={overviewOpen} onClick={() => setOverviewOpen((v) => !v)}>
+              ☰ {overviewOpen ? '收起总览' : '总览'}
+            </button>
+          )}
           {dayCount > 0 && (
             <button className="btn-mini no-print" onClick={() => setAllCollapsed(!allCollapsed)}>
               {allCollapsed ? '全部展开' : '全部折叠'}
@@ -879,7 +961,7 @@ export default function DaysSection({
       {dayCount > 0 && (
         <div ref={tabsRef} role="tablist" aria-label="跳到某一天"
           className="day-tabs no-print sticky top-[68px] sm:top-[115px] z-30 -mx-1 px-1 py-2 mb-3 flex gap-2 overflow-x-auto bg-bg/95 backdrop-blur-md">
-          <button role="tab" aria-selected={active === null} className={tabClass(active === null)} onClick={() => jumpTo(null)}>
+          <button role="tab" aria-selected={active === null} className={tabClass(active === null)} onClick={() => { setOverviewOpen(true); jumpTo(null); }}>
             ☰ 总览
           </button>
           {state.days.map((_, i) => {
@@ -896,13 +978,9 @@ export default function DaysSection({
         </div>
       )}
 
-      {dayCount > 0 && (
-        <div className="no-print mb-4">
-          <button className="flex items-center gap-1.5 text-[13px] font-semibold text-ink-2 mb-2 hover:text-jade" aria-expanded={overviewOpen}
-            onClick={() => setOverviewOpen((v) => !v)}>
-            ☰ 行程总览 <span className="text-muted font-normal">{overviewOpen ? '▴ 收起' : '▾ 展开'}</span>
-          </button>
-          {overviewOpen && state.days.map((d, i) => {
+      {dayCount > 0 && overviewOpen && (
+        <div className="no-print mb-4 grid gap-2 sm:grid-cols-2">
+          {state.days.map((d, i) => {
             const date = dayDate(startDate, i);
             return <DayOverviewRow key={i} d={d} i={i} date={date} isToday={i === todayIndex} dayWeather={date ? weatherByDate?.get(date) : undefined} onOpen={() => jumpTo(i)} />;
           })}

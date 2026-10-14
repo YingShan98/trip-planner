@@ -52,7 +52,8 @@ const LABEL = /^((?:[^：:\n>]|(?<=\d):(?=\d)){1,20}?)\s*(?:：|:(?!\d))\s*/;
 const EMOJI_ONLY = new RegExp(`^(?:${PICTO})+$`, 'u');
 /** Lines starting with these are remarks or timing, not routes; they stay with the route above them. */
 const NOTE_ICONS = /^(?:⚠|❗|‼|💡|ℹ|📌|⭐|✅|❌|⏱|⏰|🎫|💰)/u;
-const DURATION = /约?\s*\d+(?:\.\d+)?(?:\s*[–\-~～]\s*\d+(?:\.\d+)?)?\s*(?:分钟|小时|min)/;
+/** "约40分钟" — but not a lead time like "起飞前3小时抵达" / "提前30分钟出发", nor the tail of one ("0分钟"). */
+const DURATION = /(?<!前\s*|[\d.])约?\s*\d+(?:\.\d+)?(?:\s*[–\-~～]\s*\d+(?:\.\d+)?)?\s*(?:分钟|小时|min)/;
 
 function isOptionStart(line: string, requireLabel: boolean): boolean {
   if (NOTE_ICONS.test(line)) return false;
@@ -120,6 +121,29 @@ export function parseRouteOptions(text: string): { notes: string; options: Route
     else notes.push(line);
   }
   return { notes: notes.join('\n'), options: withTabLabels(raw.map(finish)) };
+}
+
+/** At-a-glance summary of a leg for its one-line chip: how you travel and how long it takes. null when the
+ *  text is only remarks ("⚠️ 务必确认航站楼…" mentions 地铁 but isn't a route) or names neither a mode nor a
+ *  duration ("免费"). Multi-route legs summarise their first route; the leg's chosen tab overrides that. */
+export function legSummary(text: string): { icon: string; label: string; duration: string } | null {
+  const { options } = parseRouteOptions(text);
+  if (options.length) {
+    const o = options[0];
+    return { icon: o.icon ?? o.mode.icon, label: o.mode.label, duration: o.duration };
+  }
+  const routeText = text.split('\n').map((l) => l.trim()).filter((l) => l && !NOTE_ICONS.test(l)).join('\n');
+  if (!routeText) return null;
+  const mode = transitMode(routeText);
+  const duration = DURATION.exec(routeText)?.[0].replace(/\s+/g, '') ?? '';
+  if (mode.label === '前往' && !duration) return null;
+  return { icon: mode.icon, label: mode.label, duration };
+}
+
+/** True when every line of a leg's text is a remark (⚠️/💡/…), so it reads as a callout rather than a route. */
+export function isNoteOnly(text: string): boolean {
+  const lines = text.split('\n').map((l) => l.trim()).filter(Boolean);
+  return lines.length > 0 && lines.every((l) => NOTE_ICONS.test(l));
 }
 
 /** A route stop trimmed to a place name for a tab: no emoji, no leading "乘", nothing from "换乘" / "（" / " - " on. */

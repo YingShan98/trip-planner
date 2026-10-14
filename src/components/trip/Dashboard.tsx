@@ -1,3 +1,4 @@
+import { useState } from 'react';
 import type { Activity, TripState } from '../../types';
 import { weatherEmoji, weatherLabel, type WeatherResult } from '../../lib/weather';
 import { formatDate, tripCountdown, tripCountdownLabel } from '../../lib/format';
@@ -47,6 +48,22 @@ function TodayCard({ state, todayIndex }: { state: TripState; todayIndex: number
   );
 }
 
+/** The trip description, folded to two lines — some trips carry a whole paragraph of planning notes. */
+function Description({ text }: { text: string }) {
+  const [open, setOpen] = useState(false);
+  const long = text.length > 80;
+  return (
+    <div className="mt-2.5 pt-2.5 border-t border-line text-[13px] text-ink-2 leading-relaxed">
+      <p className={`m-0 whitespace-pre-line ${long && !open ? 'line-clamp-2 print-unclamp' : ''}`}>{text}</p>
+      {long && (
+        <button className="no-print text-jade text-[12.5px] font-medium mt-1 hover:underline" aria-expanded={open} onClick={() => setOpen((v) => !v)}>
+          {open ? '收起' : '展开全文'}
+        </button>
+      )}
+    </div>
+  );
+}
+
 export default function Dashboard({
   state, description, total, done, startDate, endDate, weather, todayIndex,
 }: {
@@ -60,67 +77,52 @@ export default function Dashboard({
   const countdownLabel = tripCountdownLabel(startDate, endDate);
 
   return (
-    <section className="py-5 sm:py-7 border-b border-line">
-      <div className="flex justify-between items-center gap-2.5 pb-3.5 mb-4 border-b-2 border-line flex-wrap">
-        <h2 className="font-serif text-[19px] font-bold text-jade-dark">📋 旅行速览</h2>
-        {description && <span className="text-muted text-[13px]">{description}</span>}
-      </div>
+    <section className="pt-4 sm:pt-6">
       {todayIndex !== null ? <TodayCard state={state} todayIndex={todayIndex} /> : (() => {
         const stats = [
           ...(countdownLabel ? [{
-            label: countdown.phase === 'upcoming' ? '距出发' : '旅行状态',
+            label: countdown.phase === 'upcoming' ? '距出发' : '状态',
             value: countdown.phase === 'upcoming' ? `${countdown.days} 天` : countdownLabel,
           }] : []),
-          { label: '旅行天数', value: `${state.days.length} 天` },
-          { label: '行程项目', value: `${total} 项` },
-          { label: '出发准备', value: `${done}/${state.checklist.length}` },
-          { label: '打包进度', value: `${packed}/${state.packing.length}` },
-          { label: '酒店', value: `${state.hotels.length} 个` },
+          { label: '天数', value: `${state.days.length} 天` },
+          { label: '行程', value: `${total} 站` },
+          { label: '准备', value: `${done}/${state.checklist.length}` },
+          { label: '打包', value: `${packed}/${state.packing.length}` },
         ];
         return (
-          <>
-            {/* Phones: one wrapping row of chips, so the itinerary starts near the top of the screen. */}
-            <div className="sm:hidden flex flex-wrap gap-1.5">
+          <div className="bg-surface border border-line rounded-xl px-3.5 py-3 sm:px-5 sm:py-4">
+            <dl className="m-0 flex flex-wrap gap-x-5 gap-y-1.5 sm:gap-x-8">
               {stats.map(({ label, value }) => (
-                <span key={label} className="inline-flex items-baseline gap-1 bg-surface border border-line rounded-full px-2.5 py-1 text-[12px]">
-                  <span className="text-muted">{label}</span>
-                  <strong className="text-jade-dark">{value}</strong>
-                </span>
-              ))}
-            </div>
-            <div className="hidden sm:grid grid-cols-[repeat(auto-fit,minmax(140px,1fr))] gap-3">
-              {stats.map(({ label, value }) => (
-                <div key={label} className="bg-surface border border-line rounded p-4 shadow-xs transition-all duration-150 hover:shadow-sm hover:-translate-y-px">
-                  <small className="block text-muted text-[11.5px] font-semibold uppercase tracking-[0.07em] mb-2">{label}</small>
-                  <strong className="font-serif text-[26px] font-bold text-jade-dark leading-[1.15]">{value}</strong>
+                <div key={label} className="flex items-baseline gap-1.5 sm:flex-col sm:gap-0">
+                  <dt className="text-muted text-[12px]">{label}</dt>
+                  <dd className="m-0 font-bold text-jade-dark text-[14px] sm:text-[20px] sm:leading-tight">{value}</dd>
                 </div>
               ))}
-            </div>
-          </>
+            </dl>
+            {description && <Description text={description} />}
+          </div>
         );
       })()}
 
       {weather === 'loading' && (
-        <p className="text-muted text-[12.5px] mt-4">正在获取天气预报…</p>
+        <p className="text-muted text-[12.5px] mt-3">正在获取天气预报…</p>
       )}
       {weather && weather !== 'loading' && weather.status === 'ok' && (
-        <div className="mt-4">
-          <small className="block text-muted text-[11.5px] font-semibold uppercase tracking-[0.07em] mb-2">{weather.place} 天气预报</small>
-          <div className="flex gap-2 overflow-x-auto pb-1">
+        <div className="mt-3">
+          <small className="block text-muted text-[12px] mb-1.5">{weather.place} 天气</small>
+          <div className="flex gap-1.5 overflow-x-auto pb-1 day-tabs">
             {weather.days.map((d) => (
-              <div key={d.date} className="shrink-0 w-[92px] bg-surface border border-line rounded p-3 text-center">
-                <div className="text-[11px] text-muted mb-1">{formatDate(d.date)}</div>
-                <div className="text-[22px] mb-1" aria-hidden="true">{weatherEmoji(d.code)}</div>
-                <div className="text-[11px] text-muted mb-1">{weatherLabel(d.code)}</div>
-                <div className="text-[12.5px] font-semibold text-jade-dark">{d.tMax}° / {d.tMin}°</div>
-                <div className="text-[10.5px] text-sky">💧{d.precipProb}%</div>
+              <div key={d.date} className="shrink-0 bg-surface border border-line rounded-lg px-2.5 py-1.5 text-center" title={`${weatherLabel(d.code)} · 降雨概率 ${d.precipProb}%`}>
+                <div className="text-[11px] text-muted">{formatDate(d.date)}</div>
+                <div className="text-[13px] font-semibold text-ink whitespace-nowrap"><span aria-hidden="true">{weatherEmoji(d.code)}</span> {d.tMax}°/{d.tMin}°</div>
+                {d.precipProb >= 30 && <div className="text-[10.5px] text-sky">💧{d.precipProb}%</div>}
               </div>
             ))}
           </div>
         </div>
       )}
       {weather && weather !== 'loading' && weather.status === 'too-far' && (
-        <p className="text-muted text-[12.5px] mt-4">出发日期还早，14 天内会显示天气预报</p>
+        <p className="text-muted text-[12.5px] mt-3">出发前 14 天内会显示天气预报</p>
       )}
     </section>
   );
